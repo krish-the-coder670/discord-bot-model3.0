@@ -31,6 +31,35 @@
                     <li class="nav-item">
                         <a class="nav-link" href="/analytics"><i class="fas fa-chart-bar me-1"></i>Analytics</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/commands"><i class="fas fa-terminal me-1"></i>Commands</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/users"><i class="fas fa-users me-1"></i>Users</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/moderation"><i class="fas fa-shield-alt me-1"></i>Moderation</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/export"><i class="fas fa-download me-1"></i>Export</a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle position-relative" href="#" id="notificationDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-bell"></i>
+                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" id="notificationBadge" style="display: none;">
+                                0
+                            </span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" style="width: 350px; max-height: 400px; overflow-y: auto;">
+                            <li><h6 class="dropdown-header">Notifications</h6></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <div id="notificationList">
+                                <li><a class="dropdown-item text-muted">No new notifications</a></li>
+                            </div>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-center small" href="#" onclick="markAllNotificationsRead()">Mark all as read</a></li>
+                        </ul>
+                    </li>
                 </ul>
             </div>
         </div>
@@ -43,6 +72,95 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    
+    <script>
+    // Notification system
+    function loadNotifications() {
+        fetch('/api/notifications')
+            .then(response => response.json())
+            .then(notifications => {
+                const notificationList = document.getElementById('notificationList');
+                const notificationBadge = document.getElementById('notificationBadge');
+                
+                if (notifications.length === 0) {
+                    notificationList.innerHTML = '<li><a class="dropdown-item text-muted">No new notifications</a></li>';
+                    notificationBadge.style.display = 'none';
+                    return;
+                }
+                
+                const unreadCount = notifications.filter(n => !n.read).length;
+                
+                if (unreadCount > 0) {
+                    notificationBadge.textContent = unreadCount;
+                    notificationBadge.style.display = 'block';
+                } else {
+                    notificationBadge.style.display = 'none';
+                }
+                
+                notificationList.innerHTML = notifications.map(notification => {
+                    const timeAgo = getTimeAgo(new Date(notification.timestamp));
+                    const priorityClass = {
+                        'low': 'text-muted',
+                        'normal': '',
+                        'high': 'text-warning',
+                        'critical': 'text-danger'
+                    }[notification.priority] || '';
+                    
+                    const readClass = notification.read ? 'text-muted' : 'fw-bold';
+                    
+                    return `
+                        <li>
+                            <a class="dropdown-item ${readClass} ${priorityClass}" href="#" onclick="markNotificationRead('${notification.id}')">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <div class="fw-bold">${notification.title}</div>
+                                        <div class="small">${notification.message}</div>
+                                        <div class="small text-muted">${timeAgo}</div>
+                                    </div>
+                                    ${!notification.read ? '<span class="badge bg-primary">New</span>' : ''}
+                                </div>
+                            </a>
+                        </li>
+                    `;
+                }).join('');
+            })
+            .catch(error => console.error('Error loading notifications:', error));
+    }
+    
+    function markNotificationRead(notificationId) {
+        fetch(`/api/notifications/${notificationId}/read`, {
+            method: 'POST'
+        })
+        .then(() => loadNotifications())
+        .catch(error => console.error('Error marking notification as read:', error));
+    }
+    
+    function markAllNotificationsRead() {
+        // In a real implementation, this would mark all notifications as read
+        loadNotifications();
+    }
+    
+    function getTimeAgo(date) {
+        const now = new Date();
+        const diffInMinutes = Math.floor((now - date) / (1000 * 60));
+        
+        if (diffInMinutes < 1) return 'Just now';
+        if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+        
+        const diffInHours = Math.floor(diffInMinutes / 60);
+        if (diffInHours < 24) return `${diffInHours}h ago`;
+        
+        const diffInDays = Math.floor(diffInHours / 24);
+        return `${diffInDays}d ago`;
+    }
+    
+    // Load notifications on page load and refresh every 30 seconds
+    document.addEventListener('DOMContentLoaded', function() {
+        loadNotifications();
+        setInterval(loadNotifications, 30000);
+    });
+    </script>
+    
     {% block scripts %}{% endblock %}
 </body>
 </html> 

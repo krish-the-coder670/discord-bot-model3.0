@@ -1,0 +1,16 @@
+discord.py-self==1.9.2
+flask==2.3.3
+pandas==2.1.1
+numpy==1.24.3
+sentence-transformers==2.2.2
+faiss-cpu==1.7.4
+mlx-lm==0.8.0
+mlx==0.0.9
+beautifulsoup4==4.12.2
+emoji==2.8.0
+markdown==3.5.1
+psutil==5.9.5
+textblob==0.17.1
+schedule==1.2.0
+Werkzeug==2.3.7
+Jinja2==3.1.2

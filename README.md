@@ -11,12 +11,22 @@ An intelligent Discord chatbot that uses a real Discord account (via discord.py-
 - **Markdown Handling**: Cleans Discord markdown and converts emojis to text
 - **Semantic Search**: Uses FAISS for context-aware responses
 - **Human-like Behavior**: Mimics the style of users in the chat
+- **Custom Commands**: Create and manage custom bot commands with !addcmd
+- **Sentiment Analysis**: Tracks user mood and emotional tone in real-time
+- **Auto-Moderation**: Spam detection, word filtering, and caps limit enforcement
+- **Message Scheduling**: Set reminders and scheduled messages with !remind
+- **Topic Tracking**: Automatically detects and tracks conversation topics
 
 ### 🌐 Web UI Features
 - **Dashboard**: Real-time statistics and overview
 - **Profile Management**: Edit bot name, bio, and response style
 - **Settings Control**: Configure personality traits and behavior
 - **Analytics**: Chat statistics and user activity charts
+- **Commands Manager**: Create, edit, and manage custom bot commands
+- **User Analytics**: Detailed user profiles with sentiment analysis
+- **Auto-Moderation**: Configure spam detection and content filtering
+- **Data Export**: Export chat logs, user profiles, and bot data
+- **Notification System**: Real-time alerts for mentions, new users, and events
 - **Real-time Updates**: Live data refresh and monitoring
 
 ## Installation
@@ -63,12 +73,22 @@ python web_ui.py
 - **Mention the bot**: `@YourBotName` to get a response
 - **Direct messages**: The bot will respond to DMs
 - **Group chats**: The bot learns from all messages in the group
+- **!help**: Show all available commands
+- **!mood**: Check your current sentiment/mood
+- **!profile**: View your user profile and statistics
+- **!remind <minutes> <message>**: Set a reminder
+- **!addcmd <name> <response>**: Create a custom command
+- **Custom commands**: Use any custom commands you've created
 
 ### Web UI Navigation
 - **Dashboard**: Overview of chat statistics and bot status
 - **Profile**: Edit bot name, bio, and response style
 - **Settings**: Configure personality traits and behavior
 - **Analytics**: View detailed chat statistics and charts
+- **Commands**: Manage custom bot commands and view usage statistics
+- **Users**: View user profiles, sentiment analysis, and interaction history
+- **Moderation**: Configure auto-moderation settings and view moderation logs
+- **Export**: Download chat logs, user data, and bot configuration backups
 
 ### Configuration
 

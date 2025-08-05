@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+
+{% block title %}Export - Discord Bot Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-download me-2"></i>Data Export
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-file-export me-2"></i>Export Options</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <div class="card h-100 border-primary">
+                            <div class="card-body text-center">
+                                <i class="fas fa-comments fa-3x text-primary mb-3"></i>
+                                <h5>Chat Logs</h5>
+                                <p class="text-muted">Export all chat messages and conversation history</p>
+                                <button class="btn btn-primary" onclick="exportData('chat_logs')">
+                                    <i class="fas fa-download me-1"></i>Download CSV
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6 mb-4">
+                        <div class="card h-100 border-success">
+                            <div class="card-body text-center">
+                                <i class="fas fa-users fa-3x text-success mb-3"></i>
+                                <h5>User Profiles</h5>
+                                <p class="text-muted">Export user analytics and sentiment data</p>
+                                <button class="btn btn-success" onclick="exportData('user_profiles')">
+                                    <i class="fas fa-download me-1"></i>Download CSV
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6 mb-4">
+                        <div class="card h-100 border-info">
+                            <div class="card-body text-center">
+                                <i class="fas fa-terminal fa-3x text-info mb-3"></i>
+                                <h5>Custom Commands</h5>
+                                <p class="text-muted">Export all custom bot commands and responses</p>
+                                <button class="btn btn-info" onclick="exportData('commands')">
+                                    <i class="fas fa-download me-1"></i>Download JSON
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6 mb-4">
+                        <div class="card h-100 border-warning">
+                            <div class="card-body text-center">
+                                <i class="fas fa-archive fa-3x text-warning mb-3"></i>
+                                <h5>Complete Backup</h5>
+                                <p class="text-muted">Export all bot data in a single archive</p>
+                                <button class="btn btn-warning" onclick="exportData('all')">
+                                    <i class="fas fa-download me-1"></i>Download ZIP
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5><i class="fas fa-history me-2"></i>Export History</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Export Type</th>
+                                <th>Date</th>
+                                <th>Size</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="exportHistory">
+                            <!-- Export history will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-center py-3" id="noExports">
+                    <i class="fas fa-history fa-2x text-muted mb-2"></i>
+                    <p class="text-muted">No exports yet. Start by downloading some data!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle me-2"></i>Export Information</h5>
+            </div>
+            <div class="card-body">
+                <h6>Data Formats</h6>
+                <ul class="list-unstyled">
+                    <li><strong>CSV:</strong> Spreadsheet-compatible format</li>
+                    <li><strong>JSON:</strong> Structured data format</li>
+                    <li><strong>ZIP:</strong> Compressed archive with all files</li>
+                </ul>
+                
+                <hr>
+                
+                <h6>What's Included</h6>
+                <ul class="small">
+                    <li><strong>Chat Logs:</strong> Messages, timestamps, usernames</li>
+                    <li><strong>User Profiles:</strong> Analytics, sentiment scores</li>
+                    <li><strong>Commands:</strong> Custom commands and usage stats</li>
+                    <li><strong>Complete Backup:</strong> All of the above plus config</li>
+                </ul>
+                
+                <hr>
+                
+                <h6>Privacy & Security</h6>
+                <p class="small text-muted">
+                    All exports are generated locally on your machine. No data is sent to external servers.
+                    Keep exported files secure as they contain chat history and user information.
+                </p>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-bar me-2"></i>Data Statistics</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-12 mb-2">
+                        <h4 class="text-primary" id="totalMessages">-</h4>
+                        <small class="text-muted">Total Messages</small>
+                    </div>
+                    <div class="col-6">
+                        <h5 class="text-success" id="totalUsers">-</h5>
+                        <small class="text-muted">Users</small>
+                    </div>
+                    <div class="col-6">
+                        <h5 class="text-info" id="totalCommands">-</h5>
+                        <small class="text-muted">Commands</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Modal -->
+<div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary mb-3" role="status"></div>
+                <h5>Preparing Export...</h5>
+                <p class="text-muted mb-0">Please wait while we generate your data export.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function exportData(type) {
+    // Show loading modal
+    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+    loadingModal.show();
+    
+    // Add to export history
+    addToExportHistory(type);
+    
+    // Start download
+    fetch(`/api/export/${type}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Export failed');
+            }
+            return response.blob();
+        })
+        .then(blob => {
+            // Create download link
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            
+            // Set filename based on type
+            const now = new Date().toISOString().split('T')[0];
+            switch(type) {
+                case 'chat_logs':
+                    a.download = `chat_logs_${now}.csv`;
+                    break;
+                case 'user_profiles':
+                    a.download = `user_profiles_${now}.csv`;
+                    break;
+                case 'commands':
+                    a.download = `custom_commands_${now}.json`;
+                    break;
+                case 'all':
+                    a.download = `bot_data_export_${now}.zip`;
+                    break;
+            }
+            
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            loadingModal.hide();
+        })
+        .catch(error => {
+            console.error('Export error:', error);
+            loadingModal.hide();
+            alert('Export failed. Please try again.');
+        });
+}
+
+function addToExportHistory(type) {
+    const now = new Date();
+    const historyItem = {
+        type: type,
+        date: now.toLocaleString(),
+        size: 'Calculating...',
+        status: 'Completed'
+    };
+    
+    // Add to history table
+    const tbody = document.getElementById('exportHistory');
+    const row = tbody.insertRow(0);
+    
+    row.innerHTML = `
+        <td><span class="badge bg-secondary">${type.replace('_', ' ').toUpperCase()}</span></td>
+        <td>${historyItem.date}</td>
+        <td>${historyItem.size}</td>
+        <td><span class="badge bg-success">${historyItem.status}</span></td>
+    `;
+    
+    // Hide "no exports" message
+    document.getElementById('noExports').style.display = 'none';
+}
+
+// Load statistics on page load
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/api/analytics')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('totalMessages').textContent = data.stats?.total_messages || 0;
+            document.getElementById('totalUsers').textContent = data.stats?.unique_users || 0;
+        })
+        .catch(error => console.error('Error loading stats:', error));
+    
+    fetch('/api/commands')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('totalCommands').textContent = Object.keys(data).length;
+        })
+        .catch(error => console.error('Error loading commands:', error));
+});
+</script>
+{% endblock %}

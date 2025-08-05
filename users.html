@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block title %}Users - Discord Bot Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-users me-2"></i>User Analytics
+        </h1>
+    </div>
+</div>
+
+<!-- Sentiment Overview -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body text-center">
+                <h3>{{ sentiment_stats.positive }}</h3>
+                <p class="mb-0">😊 Positive Users</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body text-center">
+                <h3>{{ sentiment_stats.neutral }}</h3>
+                <p class="mb-0">😐 Neutral Users</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-danger text-white">
+            <div class="card-body text-center">
+                <h3>{{ sentiment_stats.negative }}</h3>
+                <p class="mb-0">😔 Negative Users</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body text-center">
+                <h3>{{ sentiment_stats.total_users }}</h3>
+                <p class="mb-0">👥 Total Users</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-user-friends me-2"></i>User Profiles</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Messages</th>
+                                <th>Avg Sentiment</th>
+                                <th>First Seen</th>
+                                <th>Last Active</th>
+                                <th>Mood</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user_id, profile in profiles.items() %}
+                            <tr>
+                                <td>
+                                    <strong>{{ profile.username }}</strong>
+                                    <br><small class="text-muted">ID: {{ user_id[:8] }}...</small>
+                                </td>
+                                <td><span class="badge bg-info">{{ profile.total_messages }}</span></td>
+                                <td>
+                                    {% set sentiment = profile.avg_sentiment %}
+                                    {% if sentiment > 0.1 %}
+                                        <span class="badge bg-success">{{ "%.2f"|format(sentiment) }}</span>
+                                    {% elif sentiment < -0.1 %}
+                                        <span class="badge bg-danger">{{ "%.2f"|format(sentiment) }}</span>
+                                    {% else %}
+                                        <span class="badge bg-warning">{{ "%.2f"|format(sentiment) }}</span>
+                                    {% endif %}
+                                </td>
+                                <td><small>{{ profile.first_seen[:10] if profile.first_seen else 'Unknown' }}</small></td>
+                                <td><small>{{ profile.last_active[:10] if profile.last_active else 'Unknown' }}</small></td>
+                                <td>
+                                    {% set sentiment = profile.avg_sentiment %}
+                                    {% if sentiment > 0.1 %}
+                                        😊 Positive
+                                    {% elif sentiment < -0.1 %}
+                                        😔 Negative
+                                    {% else %}
+                                        😐 Neutral
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                {% if not profiles %}
+                <div class="text-center py-4">
+                    <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">No User Data Yet</h5>
+                    <p class="text-muted">User profiles will appear here as people interact with the bot.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-pie me-2"></i>Sentiment Distribution</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="sentimentChart" width="300" height="300"></canvas>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle me-2"></i>Analytics Info</h5>
+            </div>
+            <div class="card-body">
+                <h6>Sentiment Analysis</h6>
+                <p class="small text-muted">
+                    The bot analyzes the emotional tone of each user's messages using natural language processing.
+                    Sentiment scores range from -1 (very negative) to +1 (very positive).
+                </p>
+                
+                <h6>User Tracking</h6>
+                <p class="small text-muted">
+                    The bot tracks user interaction patterns, message frequency, and communication preferences
+                    to provide personalized responses.
+                </p>
+                
+                <h6>Privacy</h6>
+                <p class="small text-muted">
+                    All data is stored locally and used only to improve bot interactions. No personal data
+                    is shared externally.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Create sentiment distribution chart
+const ctx = document.getElementById('sentimentChart').getContext('2d');
+const sentimentChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+        labels: ['Positive 😊', 'Neutral 😐', 'Negative 😔'],
+        datasets: [{
+            data: [
+                {{ sentiment_stats.positive }},
+                {{ sentiment_stats.neutral }},
+                {{ sentiment_stats.negative }}
+            ],
+            backgroundColor: [
+                '#28a745',
+                '#ffc107',
+                '#dc3545'
+            ],
+            borderWidth: 2,
+            borderColor: '#fff'
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+});
+
+// Auto-refresh every 30 seconds
+setInterval(() => {
+    location.reload();
+}, 30000);
+</script>
+{% endblock %}

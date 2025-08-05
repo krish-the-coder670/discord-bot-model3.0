@@ -1,8 +1,12 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file
 import json
 import os
 from datetime import datetime
 import pandas as pd
+import csv
+from io import StringIO
+import zipfile
+from collections import defaultdict
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'  # Change this to a random string
@@ -10,6 +14,9 @@ app.secret_key = 'your-secret-key-here'  # Change this to a random string
 # Configuration files
 CONFIG_FILE = "bot_config.json"
 SETUP_FILE = "setup_config.json"
+COMMANDS_FILE = "custom_commands.json"
+USER_PROFILES_FILE = "user_profiles.json"
+SCHEDULED_MESSAGES_FILE = "scheduled_messages.json"
 
 def load_config():
     """Load bot configuration"""
@@ -51,6 +58,61 @@ def save_setup_config(config):
     """Save setup configuration"""
     with open(SETUP_FILE, 'w') as f:
         json.dump(config, f, indent=2)
+
+def load_custom_commands():
+    """Load custom commands"""
+    if os.path.exists(COMMANDS_FILE):
+        with open(COMMANDS_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def load_user_profiles():
+    """Load user profiles"""
+    if os.path.exists(USER_PROFILES_FILE):
+        with open(USER_PROFILES_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def load_scheduled_messages():
+    """Load scheduled messages"""
+    if os.path.exists(SCHEDULED_MESSAGES_FILE):
+        with open(SCHEDULED_MESSAGES_FILE, 'r') as f:
+            return json.load(f)
+    return []
+
+def get_sentiment_stats():
+    """Get sentiment analysis statistics"""
+    profiles = load_user_profiles()
+    sentiment_data = {
+        "positive": 0,
+        "negative": 0,
+        "neutral": 0,
+        "total_users": len(profiles)
+    }
+    
+    for user_id, profile in profiles.items():
+        avg_sentiment = profile.get('avg_sentiment', 0)
+        if avg_sentiment > 0.1:
+            sentiment_data["positive"] += 1
+        elif avg_sentiment < -0.1:
+            sentiment_data["negative"] += 1
+        else:
+            sentiment_data["neutral"] += 1
+    
+    return sentiment_data
+
+def get_topic_stats():
+    """Get conversation topic statistics"""
+    # This would normally read from the bot's topic tracking
+    # For now, return sample data
+    return {
+        "gaming": 25,
+        "music": 18,
+        "movies": 15,
+        "food": 12,
+        "work": 10,
+        "technology": 20
+    }
 
 def get_chat_stats():
     """Get statistics from the CSV file"""
@@ -221,6 +283,214 @@ def get_setup_status():
     """Get setup status"""
     setup_config = load_setup_config()
     return jsonify(setup_config)
+
+# New enhanced routes
+@app.route('/commands')
+def commands():
+    """Custom commands management page"""
+    setup_config = load_setup_config()
+    if not setup_config.get('setup_complete', False):
+        return redirect(url_for('setup'))
+    
+    commands = load_custom_commands()
+    return render_template('commands.html', commands=commands)
+
+@app.route('/api/commands', methods=['GET', 'POST', 'DELETE'])
+def api_commands():
+    """API for managing custom commands"""
+    commands = load_custom_commands()
+    
+    if request.method == 'GET':
+        return jsonify(commands)
+    
+    elif request.method == 'POST':
+        data = request.get_json()
+        command_name = data.get('name', '').lower()
+        command_response = data.get('response', '')
+        
+        if not command_name or not command_response:
+            return jsonify({"success": False, "message": "Name and response are required"})
+        
+        commands[command_name] = {
+            "response": command_response,
+            "description": data.get('description', f"Custom command"),
+            "usage_count": 0,
+            "created_by": "Web UI",
+            "created_at": datetime.now().isoformat()
+        }
+        
+        with open(COMMANDS_FILE, 'w') as f:
+            json.dump(commands, f, indent=2)
+        
+        return jsonify({"success": True, "message": f"Command '{command_name}' added successfully"})
+    
+    elif request.method == 'DELETE':
+        command_name = request.args.get('name', '').lower()
+        if command_name in commands:
+            del commands[command_name]
+            with open(COMMANDS_FILE, 'w') as f:
+                json.dump(commands, f, indent=2)
+            return jsonify({"success": True, "message": f"Command '{command_name}' deleted"})
+        return jsonify({"success": False, "message": "Command not found"})
+
+@app.route('/users')
+def users():
+    """User profiles and analytics page"""
+    setup_config = load_setup_config()
+    if not setup_config.get('setup_complete', False):
+        return redirect(url_for('setup'))
+    
+    profiles = load_user_profiles()
+    sentiment_stats = get_sentiment_stats()
+    return render_template('users.html', profiles=profiles, sentiment_stats=sentiment_stats)
+
+@app.route('/export')
+def export_page():
+    """Data export page"""
+    setup_config = load_setup_config()
+    if not setup_config.get('setup_complete', False):
+        return redirect(url_for('setup'))
+    
+    return render_template('export.html')
+
+@app.route('/api/export/<export_type>')
+def api_export(export_type):
+    """API for exporting different types of data"""
+    setup_config = load_setup_config()
+    csv_path = setup_config.get('csv_file_path', 'Downloads/GC data.csv')
+    
+    if export_type == 'chat_logs':
+        if os.path.exists(csv_path):
+            return send_file(csv_path, as_attachment=True, download_name='chat_logs.csv')
+        return jsonify({"error": "Chat logs not found"}), 404
+    
+    elif export_type == 'user_profiles':
+        profiles = load_user_profiles()
+        output = StringIO()
+        if profiles:
+            # Convert to CSV format
+            fieldnames = ['user_id', 'username', 'total_messages', 'avg_sentiment', 'first_seen', 'last_active']
+            writer = csv.DictWriter(output, fieldnames=fieldnames)
+            writer.writeheader()
+            
+            for user_id, profile in profiles.items():
+                row = {
+                    'user_id': user_id,
+                    'username': profile.get('username', ''),
+                    'total_messages': profile.get('total_messages', 0),
+                    'avg_sentiment': profile.get('avg_sentiment', 0),
+                    'first_seen': profile.get('first_seen', ''),
+                    'last_active': profile.get('last_active', '')
+                }
+                writer.writerow(row)
+        
+        output.seek(0)
+        return send_file(
+            StringIO(output.getvalue()),
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name='user_profiles.csv'
+        )
+    
+    elif export_type == 'commands':
+        commands = load_custom_commands()
+        output = StringIO()
+        json.dump(commands, output, indent=2)
+        output.seek(0)
+        return send_file(
+            StringIO(output.getvalue()),
+            mimetype='application/json',
+            as_attachment=True,
+            download_name='custom_commands.json'
+        )
+    
+    elif export_type == 'all':
+        # Create a zip file with all data
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp:
+            with zipfile.ZipFile(tmp.name, 'w') as zf:
+                # Add chat logs
+                if os.path.exists(csv_path):
+                    zf.write(csv_path, 'chat_logs.csv')
+                
+                # Add user profiles
+                if os.path.exists(USER_PROFILES_FILE):
+                    zf.write(USER_PROFILES_FILE, 'user_profiles.json')
+                
+                # Add commands
+                if os.path.exists(COMMANDS_FILE):
+                    zf.write(COMMANDS_FILE, 'custom_commands.json')
+                
+                # Add scheduled messages
+                if os.path.exists(SCHEDULED_MESSAGES_FILE):
+                    zf.write(SCHEDULED_MESSAGES_FILE, 'scheduled_messages.json')
+            
+            return send_file(tmp.name, as_attachment=True, download_name='bot_data_export.zip')
+    
+    return jsonify({"error": "Invalid export type"}), 400
+
+@app.route('/api/sentiment_data')
+def api_sentiment_data():
+    """API for sentiment analysis data"""
+    sentiment_stats = get_sentiment_stats()
+    topic_stats = get_topic_stats()
+    
+    return jsonify({
+        "sentiment": sentiment_stats,
+        "topics": topic_stats
+    })
+
+@app.route('/moderation')
+def moderation():
+    """Auto-moderation settings page"""
+    setup_config = load_setup_config()
+    if not setup_config.get('setup_complete', False):
+        return redirect(url_for('setup'))
+    
+    # Load moderation settings (would be from bot config in real implementation)
+    mod_settings = {
+        "spam_detection": True,
+        "word_filter": True,
+        "caps_limit": 0.7,
+        "spam_threshold": 5,
+        "filtered_words": ["spam", "scam", "phishing"]
+    }
+    
+    return render_template('moderation.html', settings=mod_settings)
+
+@app.route('/api/notifications')
+def api_notifications():
+    """API for getting notifications"""
+    # In a real implementation, this would read from the bot's notification system
+    # For now, return sample data
+    notifications = [
+        {
+            "id": "notif1",
+            "type": "mention",
+            "title": "Bot mentioned",
+            "message": "User123 mentioned the bot in #general",
+            "priority": "normal",
+            "timestamp": datetime.now().isoformat(),
+            "read": False
+        },
+        {
+            "id": "notif2",
+            "type": "new_user",
+            "title": "New user joined",
+            "message": "NewUser sent their first message",
+            "priority": "low",
+            "timestamp": (datetime.now() - timedelta(minutes=5)).isoformat(),
+            "read": True
+        }
+    ]
+    
+    return jsonify(notifications)
+
+@app.route('/api/notifications/<notification_id>/read', methods=['POST'])
+def mark_notification_read(notification_id):
+    """Mark a notification as read"""
+    # In a real implementation, this would update the bot's notification system
+    return jsonify({"success": True, "message": "Notification marked as read"})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000) 

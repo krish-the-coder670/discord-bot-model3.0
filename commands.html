@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}Commands - Discord Bot Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-terminal me-2"></i>Custom Commands
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-list me-2"></i>Command List</h5>
+                <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addCommandModal">
+                    <i class="fas fa-plus me-1"></i>Add Command
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Command</th>
+                                <th>Description</th>
+                                <th>Usage Count</th>
+                                <th>Created By</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="commandsTableBody">
+                            {% for name, cmd in commands.items() %}
+                            <tr data-command="{{ name }}">
+                                <td><code>!{{ name }}</code></td>
+                                <td>{{ cmd.description }}</td>
+                                <td><span class="badge bg-info">{{ cmd.usage_count }}</span></td>
+                                <td>{{ cmd.created_by|default('Unknown') }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary me-1" onclick="editCommand('{{ name }}')">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteCommand('{{ name }}')">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle me-2"></i>Command Usage</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Available Commands:</strong></p>
+                <ul class="list-unstyled">
+                    <li><code>!help</code> - Show available commands</li>
+                    <li><code>!mood</code> - Check user's current mood</li>
+                    <li><code>!profile</code> - Show user profile</li>
+                    <li><code>!remind &lt;min&gt; &lt;msg&gt;</code> - Set reminder</li>
+                    <li><code>!addcmd &lt;name&gt; &lt;response&gt;</code> - Add custom command</li>
+                </ul>
+                
+                <hr>
+                
+                <p><strong>Tips:</strong></p>
+                <ul class="small">
+                    <li>Commands are case-insensitive</li>
+                    <li>Use variables like {user} in responses</li>
+                    <li>Keep responses concise and friendly</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-bar me-2"></i>Command Stats</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-6">
+                        <h4 class="text-primary">{{ commands|length }}</h4>
+                        <small class="text-muted">Total Commands</small>
+                    </div>
+                    <div class="col-6">
+                        <h4 class="text-success">{{ commands.values()|map(attribute='usage_count')|sum }}</h4>
+                        <small class="text-muted">Total Uses</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Command Modal -->
+<div class="modal fade" id="addCommandModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Custom Command</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addCommandForm">
+                    <div class="mb-3">
+                        <label class="form-label">Command Name</label>
+                        <div class="input-group">
+                            <span class="input-group-text">!</span>
+                            <input type="text" class="form-control" id="commandName" placeholder="mycommand" required>
+                        </div>
+                        <div class="form-text">Use lowercase letters, numbers, and underscores only</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <input type="text" class="form-control" id="commandDescription" placeholder="What does this command do?">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Response</label>
+                        <textarea class="form-control" id="commandResponse" rows="3" placeholder="The bot's response when this command is used" required></textarea>
+                        <div class="form-text">You can use {user} to mention the user who used the command</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveCommand()">Save Command</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function saveCommand() {
+    const name = document.getElementById('commandName').value.trim().toLowerCase();
+    const description = document.getElementById('commandDescription').value.trim();
+    const response = document.getElementById('commandResponse').value.trim();
+    
+    if (!name || !response) {
+        alert('Command name and response are required!');
+        return;
+    }
+    
+    fetch('/api/commands', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            name: name,
+            description: description || `Custom command`,
+            response: response
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error saving command');
+    });
+}
+
+function deleteCommand(commandName) {
+    if (!confirm(`Are you sure you want to delete the command "!${commandName}"?`)) {
+        return;
+    }
+    
+    fetch(`/api/commands?name=${commandName}`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error deleting command');
+    });
+}
+
+function editCommand(commandName) {
+    // For now, just show the add command modal with existing data
+    // In a full implementation, you'd populate the form with existing values
+    alert('Edit functionality coming soon! For now, delete and recreate the command.');
+}
+</script>
+{% endblock %}

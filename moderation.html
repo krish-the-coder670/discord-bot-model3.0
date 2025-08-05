@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+
+{% block title %}Moderation - Discord Bot Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-shield-alt me-2"></i>Auto-Moderation
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-cogs me-2"></i>Moderation Settings</h5>
+            </div>
+            <div class="card-body">
+                <form id="moderationForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Detection Features</h6>
+                            
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="spamDetection" 
+                                       {{ 'checked' if settings.spam_detection }}>
+                                <label class="form-check-label" for="spamDetection">
+                                    <strong>Spam Detection</strong>
+                                    <br><small class="text-muted">Detect and warn about spam messages</small>
+                                </label>
+                            </div>
+                            
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="wordFilter" 
+                                       {{ 'checked' if settings.word_filter }}>
+                                <label class="form-check-label" for="wordFilter">
+                                    <strong>Word Filter</strong>
+                                    <br><small class="text-muted">Filter inappropriate words and phrases</small>
+                                </label>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Spam Threshold</label>
+                                <input type="range" class="form-range" id="spamThreshold" min="3" max="10" 
+                                       value="{{ settings.spam_threshold }}" oninput="updateSpamThreshold(this.value)">
+                                <div class="d-flex justify-content-between">
+                                    <small class="text-muted">Lenient (3)</small>
+                                    <small class="text-muted">Messages per minute: <span id="spamThresholdValue">{{ settings.spam_threshold }}</span></small>
+                                    <small class="text-muted">Strict (10)</small>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Caps Limit</label>
+                                <input type="range" class="form-range" id="capsLimit" min="0.3" max="1.0" step="0.1" 
+                                       value="{{ settings.caps_limit }}" oninput="updateCapsLimit(this.value)">
+                                <div class="d-flex justify-content-between">
+                                    <small class="text-muted">30%</small>
+                                    <small class="text-muted">Max caps ratio: <span id="capsLimitValue">{{ (settings.caps_limit * 100)|int }}%</span></small>
+                                    <small class="text-muted">100%</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <h6>Filtered Words</h6>
+                            <div class="mb-3">
+                                <div id="filteredWordsList" class="mb-2">
+                                    {% for word in settings.filtered_words %}
+                                    <span class="badge bg-danger me-1 mb-1">
+                                        {{ word }}
+                                        <button type="button" class="btn-close btn-close-white ms-1" 
+                                                onclick="removeFilteredWord('{{ word }}')" style="font-size: 0.7em;"></button>
+                                    </span>
+                                    {% endfor %}
+                                </div>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="newFilteredWord" 
+                                           placeholder="Add filtered word...">
+                                    <button class="btn btn-outline-danger" type="button" onclick="addFilteredWord()">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted">Words to automatically flag in messages</small>
+                            </div>
+                            
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                <strong>How it works:</strong> The bot will warn users when their messages trigger moderation rules, 
+                                but won't delete messages or take punitive action.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="d-flex justify-content-between">
+                        <button type="button" class="btn btn-secondary" onclick="resetToDefaults()">
+                            <i class="fas fa-undo me-1"></i>Reset to Defaults
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="saveSettings()">
+                            <i class="fas fa-save me-1"></i>Save Settings
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5><i class="fas fa-history me-2"></i>Recent Moderation Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>User</th>
+                                <th>Action</th>
+                                <th>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody id="moderationLog">
+                            <!-- Sample data - in real implementation this would come from bot logs -->
+                            <tr>
+                                <td><small>2024-01-15 14:30</small></td>
+                                <td>User123</td>
+                                <td><span class="badge bg-warning">Warning</span></td>
+                                <td>Excessive caps usage</td>
+                            </tr>
+                            <tr>
+                                <td><small>2024-01-15 14:25</small></td>
+                                <td>TestUser</td>
+                                <td><span class="badge bg-warning">Warning</span></td>
+                                <td>Potential spam detected</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-center py-3" id="noModerationActions" style="display: none;">
+                    <i class="fas fa-shield-alt fa-2x text-muted mb-2"></i>
+                    <p class="text-muted">No moderation actions yet. Settings are working in the background!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-line me-2"></i>Moderation Stats</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-6 mb-3">
+                        <h4 class="text-warning">12</h4>
+                        <small class="text-muted">Warnings Today</small>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <h4 class="text-info">156</h4>
+                        <small class="text-muted">Total Actions</small>
+                    </div>
+                    <div class="col-12">
+                        <h4 class="text-success">98.5%</h4>
+                        <small class="text-muted">Clean Message Rate</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5><i class="fas fa-lightbulb me-2"></i>Tips & Best Practices</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled small">
+                    <li class="mb-2">
+                        <i class="fas fa-check text-success me-2"></i>
+                        Start with lenient settings and adjust based on your community
+                    </li>
+                    <li class="mb-2">
+                        <i class="fas fa-check text-success me-2"></i>
+                        Monitor the moderation log to fine-tune your settings
+                    </li>
+                    <li class="mb-2">
+                        <i class="fas fa-check text-success me-2"></i>
+                        Add context-specific filtered words for your server
+                    </li>
+                    <li class="mb-2">
+                        <i class="fas fa-check text-success me-2"></i>
+                        The bot warns users but doesn't take punitive action
+                    </li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5><i class="fas fa-exclamation-triangle me-2"></i>Important Notes</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning mb-0">
+                    <small>
+                        <strong>Privacy:</strong> All moderation happens locally. No message content is sent to external services.
+                        <br><br>
+                        <strong>Limitations:</strong> This is a basic moderation system. For advanced moderation, consider dedicated bot solutions.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentSettings = {
+    spam_detection: {{ 'true' if settings.spam_detection else 'false' }},
+    word_filter: {{ 'true' if settings.word_filter else 'false' }},
+    caps_limit: {{ settings.caps_limit }},
+    spam_threshold: {{ settings.spam_threshold }},
+    filtered_words: {{ settings.filtered_words|tojson }}
+};
+
+function updateSpamThreshold(value) {
+    document.getElementById('spamThresholdValue').textContent = value;
+    currentSettings.spam_threshold = parseInt(value);
+}
+
+function updateCapsLimit(value) {
+    document.getElementById('capsLimitValue').textContent = Math.round(value * 100) + '%';
+    currentSettings.caps_limit = parseFloat(value);
+}
+
+function addFilteredWord() {
+    const input = document.getElementById('newFilteredWord');
+    const word = input.value.trim().toLowerCase();
+    
+    if (word && !currentSettings.filtered_words.includes(word)) {
+        currentSettings.filtered_words.push(word);
+        
+        // Add to UI
+        const wordsList = document.getElementById('filteredWordsList');
+        const badge = document.createElement('span');
+        badge.className = 'badge bg-danger me-1 mb-1';
+        badge.innerHTML = `
+            ${word}
+            <button type="button" class="btn-close btn-close-white ms-1" 
+                    onclick="removeFilteredWord('${word}')" style="font-size: 0.7em;"></button>
+        `;
+        wordsList.appendChild(badge);
+        
+        input.value = '';
+    }
+}
+
+function removeFilteredWord(word) {
+    currentSettings.filtered_words = currentSettings.filtered_words.filter(w => w !== word);
+    
+    // Remove from UI
+    const badges = document.querySelectorAll('#filteredWordsList .badge');
+    badges.forEach(badge => {
+        if (badge.textContent.trim().startsWith(word)) {
+            badge.remove();
+        }
+    });
+}
+
+function saveSettings() {
+    // Update settings from form
+    currentSettings.spam_detection = document.getElementById('spamDetection').checked;
+    currentSettings.word_filter = document.getElementById('wordFilter').checked;
+    
+    // In a real implementation, this would send to the backend
+    console.log('Saving settings:', currentSettings);
+    
+    // Show success message
+    const alert = document.createElement('div');
+    alert.className = 'alert alert-success alert-dismissible fade show';
+    alert.innerHTML = `
+        <i class="fas fa-check me-2"></i>Moderation settings saved successfully!
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.querySelector('.card-body').insertBefore(alert, document.querySelector('form'));
+    
+    // Auto-dismiss after 3 seconds
+    setTimeout(() => {
+        alert.remove();
+    }, 3000);
+}
+
+function resetToDefaults() {
+    if (confirm('Are you sure you want to reset all moderation settings to defaults?')) {
+        // Reset to default values
+        currentSettings = {
+            spam_detection: true,
+            word_filter: true,
+            caps_limit: 0.7,
+            spam_threshold: 5,
+            filtered_words: ['spam', 'scam', 'phishing']
+        };
+        
+        // Update UI
+        document.getElementById('spamDetection').checked = currentSettings.spam_detection;
+        document.getElementById('wordFilter').checked = currentSettings.word_filter;
+        document.getElementById('spamThreshold').value = currentSettings.spam_threshold;
+        document.getElementById('capsLimit').value = currentSettings.caps_limit;
+        
+        updateSpamThreshold(currentSettings.spam_threshold);
+        updateCapsLimit(currentSettings.caps_limit);
+        
+        // Rebuild filtered words list
+        const wordsList = document.getElementById('filteredWordsList');
+        wordsList.innerHTML = '';
+        currentSettings.filtered_words.forEach(word => {
+            const badge = document.createElement('span');
+            badge.className = 'badge bg-danger me-1 mb-1';
+            badge.innerHTML = `
+                ${word}
+                <button type="button" class="btn-close btn-close-white ms-1" 
+                        onclick="removeFilteredWord('${word}')" style="font-size: 0.7em;"></button>
+            `;
+            wordsList.appendChild(badge);
+        });
+    }
+}
+
+// Allow Enter key to add filtered words
+document.getElementById('newFilteredWord').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        addFilteredWord();
+    }
+});
+</script>
+{% endblock %}

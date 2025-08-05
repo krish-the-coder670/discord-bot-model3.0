@@ -20,6 +20,9 @@ import time
 from collections import deque, defaultdict
 import pickle
 import hashlib
+import random
+from textblob import TextBlob
+import schedule
 
 # Discord.py-self setup for real account
 intents = discord.Intents.default()
@@ -30,6 +33,33 @@ bot = discord.Client(intents=intents)
 # Configuration files
 CONFIG_FILE = "bot_config.json"
 SETUP_FILE = "setup_config.json"
+COMMANDS_FILE = "custom_commands.json"
+USER_PROFILES_FILE = "user_profiles.json"
+SCHEDULED_MESSAGES_FILE = "scheduled_messages.json"
+
+# New feature storage
+CUSTOM_COMMANDS = {}
+USER_PROFILES = {}
+SCHEDULED_MESSAGES = []
+CONVERSATION_TOPICS = defaultdict(list)
+SENTIMENT_HISTORY = defaultdict(list)
+AUTO_MOD_SETTINGS = {
+    "spam_detection": True,
+    "word_filter": True,
+    "caps_limit": 0.7,
+    "spam_threshold": 5,
+    "filtered_words": ["spam", "scam", "phishing"]
+}
+
+# Notification system
+NOTIFICATIONS = []
+NOTIFICATION_SETTINGS = {
+    "mention_alerts": True,
+    "new_user_alerts": True,
+    "command_usage_alerts": True,
+    "moderation_alerts": True,
+    "system_alerts": True
+}
 
 def load_config():
     """Load bot configuration from web UI"""
@@ -49,6 +79,57 @@ def load_setup_config():
         "csv_file_path": "Downloads/GC data.csv",
         "setup_complete": False
     }
+
+def load_custom_commands():
+    """Load custom commands from file"""
+    global CUSTOM_COMMANDS
+    if os.path.exists(COMMANDS_FILE):
+        with open(COMMANDS_FILE, 'r') as f:
+            CUSTOM_COMMANDS = json.load(f)
+    else:
+        # Default commands
+        CUSTOM_COMMANDS = {
+            "help": {
+                "response": "Available commands: !help, !stats, !mood, !remind, !profile",
+                "description": "Show available commands",
+                "usage_count": 0
+            },
+            "stats": {
+                "response": "Check the web dashboard for detailed statistics!",
+                "description": "Show bot statistics",
+                "usage_count": 0
+            }
+        }
+        save_custom_commands()
+
+def save_custom_commands():
+    """Save custom commands to file"""
+    with open(COMMANDS_FILE, 'w') as f:
+        json.dump(CUSTOM_COMMANDS, f, indent=2)
+
+def load_user_profiles():
+    """Load user profiles from file"""
+    global USER_PROFILES
+    if os.path.exists(USER_PROFILES_FILE):
+        with open(USER_PROFILES_FILE, 'r') as f:
+            USER_PROFILES = json.load(f)
+
+def save_user_profiles():
+    """Save user profiles to file"""
+    with open(USER_PROFILES_FILE, 'w') as f:
+        json.dump(USER_PROFILES, f, indent=2)
+
+def load_scheduled_messages():
+    """Load scheduled messages from file"""
+    global SCHEDULED_MESSAGES
+    if os.path.exists(SCHEDULED_MESSAGES_FILE):
+        with open(SCHEDULED_MESSAGES_FILE, 'r') as f:
+            SCHEDULED_MESSAGES = json.load(f)
+
+def save_scheduled_messages():
+    """Save scheduled messages to file"""
+    with open(SCHEDULED_MESSAGES_FILE, 'w') as f:
+        json.dump(SCHEDULED_MESSAGES, f, indent=2)
 
 # Advanced Memory Management
 MESSAGE_CACHE = deque(maxlen=2000)  # Increased cache size for better recall
@@ -71,6 +152,46 @@ def initialize_files():
     if not os.path.exists(csv_file):
         with open(csv_file, 'w') as f:
             f.write("Date,Username,User tag,Content,Mentions,link\n")
+    
+    # Load all configuration files
+    load_custom_commands()
+    load_user_profiles()
+    load_scheduled_messages()
+
+async def process_scheduled_messages():
+    """Process and send scheduled messages"""
+    global SCHEDULED_MESSAGES
+    current_time = datetime.now()
+    
+    messages_to_send = []
+    remaining_messages = []
+    
+    for msg in SCHEDULED_MESSAGES:
+        scheduled_time = datetime.fromisoformat(msg["scheduled_time"])
+        if current_time >= scheduled_time:
+            messages_to_send.append(msg)
+        else:
+            remaining_messages.append(msg)
+    
+    # Send due messages
+    for msg in messages_to_send:
+        try:
+            channel = bot.get_channel(int(msg["channel_id"]))
+            if channel:
+                await channel.send(msg["message"])
+        except Exception as e:
+            print(f"Error sending scheduled message: {e}")
+    
+    # Update scheduled messages list
+    SCHEDULED_MESSAGES = remaining_messages
+    if len(messages_to_send) > 0:
+        save_scheduled_messages()
+
+async def scheduled_message_loop():
+    """Background task to check for scheduled messages"""
+    while True:
+        await process_scheduled_messages()
+        await asyncio.sleep(60)  # Check every minute
 
 def clean_markdown(text):
     """Remove Discord markdown formatting"""
@@ -178,6 +299,274 @@ def generate_user_style_response(username, base_response):
     base_response += " " + "!" * np.random.randint(1, 3)  # Add excitement
 
     return base_response
+
+def analyze_sentiment(text):
+    """Analyze sentiment of a message using TextBlob"""
+    try:
+        blob = TextBlob(text)
+        sentiment = blob.sentiment
+        
+        # Classify sentiment
+        if sentiment.polarity > 0.1:
+            mood = "positive"
+        elif sentiment.polarity < -0.1:
+            mood = "negative"
+        else:
+            mood = "neutral"
+            
+        return {
+            "polarity": sentiment.polarity,
+            "subjectivity": sentiment.subjectivity,
+            "mood": mood
+        }
+    except:
+        return {"polarity": 0, "subjectivity": 0, "mood": "neutral"}
+
+def update_user_profile(message):
+    """Update detailed user profile with interaction data"""
+    user_id = str(message.author.id)
+    username = message.author.name
+    
+    if user_id not in USER_PROFILES:
+        USER_PROFILES[user_id] = {
+            "username": username,
+            "first_seen": datetime.now().isoformat(),
+            "total_messages": 0,
+            "avg_sentiment": 0,
+            "favorite_topics": [],
+            "interaction_score": 0,
+            "last_active": datetime.now().isoformat(),
+            "preferred_response_style": "casual"
+        }
+    
+    profile = USER_PROFILES[user_id]
+    profile["total_messages"] += 1
+    profile["last_active"] = datetime.now().isoformat()
+    profile["username"] = username  # Update in case of name change
+    
+    # Update sentiment history
+    sentiment = analyze_sentiment(message.content)
+    SENTIMENT_HISTORY[user_id].append({
+        "timestamp": datetime.now().isoformat(),
+        "sentiment": sentiment,
+        "message_length": len(message.content)
+    })
+    
+    # Keep only last 50 sentiment records per user
+    if len(SENTIMENT_HISTORY[user_id]) > 50:
+        SENTIMENT_HISTORY[user_id] = SENTIMENT_HISTORY[user_id][-50:]
+    
+    # Calculate average sentiment
+    recent_sentiments = [s["sentiment"]["polarity"] for s in SENTIMENT_HISTORY[user_id][-10:]]
+    if recent_sentiments:
+        profile["avg_sentiment"] = sum(recent_sentiments) / len(recent_sentiments)
+    
+    save_user_profiles()
+
+def check_auto_moderation(message):
+    """Check message against auto-moderation rules"""
+    if not AUTO_MOD_SETTINGS.get("spam_detection", True):
+        return {"action": "none", "reason": ""}
+    
+    content = message.content.lower()
+    issues = []
+    
+    # Check for filtered words
+    if AUTO_MOD_SETTINGS.get("word_filter", True):
+        for word in AUTO_MOD_SETTINGS.get("filtered_words", []):
+            if word.lower() in content:
+                issues.append(f"Contains filtered word: {word}")
+    
+    # Check caps ratio
+    if len(message.content) > 10:
+        caps_ratio = sum(1 for c in message.content if c.isupper()) / len(message.content)
+        if caps_ratio > AUTO_MOD_SETTINGS.get("caps_limit", 0.7):
+            issues.append("Excessive caps usage")
+    
+    # Check for spam (repeated messages)
+    user_id = str(message.author.id)
+    recent_messages = [msg for msg in MESSAGE_CACHE 
+                      if msg.get("author_id") == user_id and 
+                      (datetime.now() - datetime.fromisoformat(msg.get("timestamp", "2000-01-01"))).seconds < 60]
+    
+    if len(recent_messages) > AUTO_MOD_SETTINGS.get("spam_threshold", 5):
+        issues.append("Potential spam detected")
+    
+    if issues:
+        return {"action": "warn", "reason": "; ".join(issues)}
+    
+    return {"action": "none", "reason": ""}
+
+def process_command(message):
+    """Process bot commands"""
+    content = message.content.strip()
+    
+    # Check if message starts with command prefix
+    if not content.startswith('!'):
+        return None
+    
+    # Extract command and arguments
+    parts = content[1:].split()
+    if not parts:
+        return None
+    
+    command = parts[0].lower()
+    args = parts[1:] if len(parts) > 1 else []
+    
+    # Handle built-in commands
+    if command == "help":
+        commands_list = []
+        for cmd, data in CUSTOM_COMMANDS.items():
+            commands_list.append(f"!{cmd} - {data['description']}")
+        return "Available commands:\n" + "\n".join(commands_list)
+    
+    elif command == "mood":
+        user_id = str(message.author.id)
+        if user_id in SENTIMENT_HISTORY and SENTIMENT_HISTORY[user_id]:
+            recent_sentiment = SENTIMENT_HISTORY[user_id][-1]["sentiment"]
+            mood_emoji = {"positive": "😊", "negative": "😔", "neutral": "😐"}
+            return f"Your current mood seems {recent_sentiment['mood']} {mood_emoji.get(recent_sentiment['mood'], '🤔')}"
+        return "I haven't analyzed your mood yet. Send more messages!"
+    
+    elif command == "profile":
+        user_id = str(message.author.id)
+        if user_id in USER_PROFILES:
+            profile = USER_PROFILES[user_id]
+            return f"**{profile['username']}'s Profile:**\n" \
+                   f"Messages sent: {profile['total_messages']}\n" \
+                   f"Average mood: {profile['avg_sentiment']:.2f}\n" \
+                   f"Member since: {profile['first_seen'][:10]}"
+        return "Profile not found. Send more messages to build your profile!"
+    
+    elif command == "remind":
+        if len(args) < 2:
+            return "Usage: !remind <time_in_minutes> <message>"
+        
+        try:
+            minutes = int(args[0])
+            reminder_text = " ".join(args[1:])
+            
+            # Schedule reminder
+            reminder_time = datetime.now() + timedelta(minutes=minutes)
+            SCHEDULED_MESSAGES.append({
+                "id": hashlib.md5(f"{message.author.id}{reminder_time}".encode()).hexdigest()[:8],
+                "user_id": str(message.author.id),
+                "channel_id": str(message.channel.id),
+                "message": f"⏰ Reminder: {reminder_text}",
+                "scheduled_time": reminder_time.isoformat(),
+                "created_by": message.author.name
+            })
+            save_scheduled_messages()
+            
+            return f"✅ Reminder set for {minutes} minutes: {reminder_text}"
+        except ValueError:
+            return "Invalid time format. Use: !remind <minutes> <message>"
+    
+    elif command == "addcmd":
+        if len(args) < 2:
+            return "Usage: !addcmd <command_name> <response>"
+        
+        cmd_name = args[0].lower()
+        cmd_response = " ".join(args[1:])
+        
+        CUSTOM_COMMANDS[cmd_name] = {
+            "response": cmd_response,
+            "description": f"Custom command added by {message.author.name}",
+            "usage_count": 0,
+            "created_by": message.author.name,
+            "created_at": datetime.now().isoformat()
+        }
+        save_custom_commands()
+        
+        return f"✅ Custom command `!{cmd_name}` added successfully!"
+    
+    # Check custom commands
+    elif command in CUSTOM_COMMANDS:
+        CUSTOM_COMMANDS[command]["usage_count"] += 1
+        save_custom_commands()
+        return CUSTOM_COMMANDS[command]["response"]
+    
+    return f"Unknown command: {command}. Use !help for available commands."
+
+def extract_conversation_topics(message):
+    """Extract and track conversation topics"""
+    content = message.content.lower()
+    
+    # Simple topic extraction based on keywords
+    topics = {
+        "gaming": ["game", "play", "gaming", "steam", "xbox", "playstation", "nintendo"],
+        "music": ["music", "song", "album", "artist", "spotify", "youtube music"],
+        "movies": ["movie", "film", "cinema", "netflix", "disney", "series"],
+        "food": ["food", "eat", "restaurant", "cooking", "recipe", "hungry"],
+        "work": ["work", "job", "office", "meeting", "project", "deadline"],
+        "school": ["school", "class", "homework", "exam", "study", "university"],
+        "sports": ["sport", "football", "basketball", "soccer", "tennis", "gym"],
+        "technology": ["tech", "computer", "phone", "app", "software", "coding"]
+    }
+    
+    detected_topics = []
+    for topic, keywords in topics.items():
+        if any(keyword in content for keyword in keywords):
+            detected_topics.append(topic)
+    
+    if detected_topics:
+        channel_id = str(message.channel.id)
+        timestamp = datetime.now().isoformat()
+        
+        for topic in detected_topics:
+            CONVERSATION_TOPICS[channel_id].append({
+                "topic": topic,
+                "timestamp": timestamp,
+                "user": message.author.name,
+                "message_snippet": content[:50] + "..." if len(content) > 50 else content
+            })
+        
+        # Keep only last 100 topics per channel
+        if len(CONVERSATION_TOPICS[channel_id]) > 100:
+            CONVERSATION_TOPICS[channel_id] = CONVERSATION_TOPICS[channel_id][-100:]
+
+def add_notification(notification_type, title, message, priority="normal"):
+    """Add a notification to the system"""
+    if not NOTIFICATION_SETTINGS.get(f"{notification_type}_alerts", True):
+        return
+    
+    global NOTIFICATIONS
+    notification = {
+        "id": hashlib.md5(f"{datetime.now().isoformat()}{title}".encode()).hexdigest()[:8],
+        "type": notification_type,
+        "title": title,
+        "message": message,
+        "priority": priority,  # low, normal, high, critical
+        "timestamp": datetime.now().isoformat(),
+        "read": False
+    }
+    
+    NOTIFICATIONS.append(notification)
+    
+    # Keep only last 100 notifications
+    if len(NOTIFICATIONS) > 100:
+        NOTIFICATIONS = NOTIFICATIONS[-100:]
+    
+    # Log critical notifications
+    if priority == "critical":
+        print(f"🚨 CRITICAL NOTIFICATION: {title} - {message}")
+
+def mark_notification_read(notification_id):
+    """Mark a notification as read"""
+    for notification in NOTIFICATIONS:
+        if notification["id"] == notification_id:
+            notification["read"] = True
+            break
+
+def get_unread_notifications():
+    """Get count of unread notifications"""
+    return len([n for n in NOTIFICATIONS if not n["read"]])
+
+def clear_old_notifications():
+    """Clear notifications older than 7 days"""
+    global NOTIFICATIONS
+    week_ago = datetime.now() - timedelta(days=7)
+    NOTIFICATIONS = [n for n in NOTIFICATIONS if datetime.fromisoformat(n["timestamp"]) > week_ago]
 
 # Semantic search setup
 embedder = SentenceTransformer('all-MiniLM-L6-v2')
@@ -476,6 +865,9 @@ async def on_ready():
 
     # Start system monitor task
     asyncio.create_task(monitor_system_resources())
+    
+    # Start scheduled message processing
+    asyncio.create_task(scheduled_message_loop())
 
     # Load MLX model
     await load_mlx_model()
@@ -484,6 +876,34 @@ async def on_ready():
 async def on_message(message):
     if message.author == bot.user:
         return
+
+    # Check for commands first
+    command_response = process_command(message)
+    if command_response:
+        await message.channel.send(command_response)
+        add_notification("command_usage", "Command used", 
+                        f"{message.author.name} used command: {message.content.split()[0]}", "low")
+        return
+
+    # Check auto-moderation
+    mod_result = check_auto_moderation(message)
+    if mod_result["action"] == "warn":
+        await message.channel.send(f"⚠️ {message.author.mention}: {mod_result['reason']}")
+        add_notification("moderation", "Auto-moderation triggered", 
+                        f"User {message.author.name} warned for: {mod_result['reason']}", "normal")
+        # Don't return here - still process the message
+
+    # Update user profile and sentiment
+    is_new_user = str(message.author.id) not in USER_PROFILES
+    update_user_profile(message)
+    
+    # Notify about new users
+    if is_new_user:
+        add_notification("new_user", "New user joined", 
+                        f"{message.author.name} sent their first message", "low")
+    
+    # Extract conversation topics
+    extract_conversation_topics(message)
 
     # Track and store new message
     track_conversation_thread(message)
