@@ -36,6 +36,9 @@ SETUP_FILE = "setup_config.json"
 COMMANDS_FILE = "custom_commands.json"
 USER_PROFILES_FILE = "user_profiles.json"
 SCHEDULED_MESSAGES_FILE = "scheduled_messages.json"
+NOTIFICATIONS_FILE = "notifications.json"
+MODERATION_SETTINGS_FILE = "moderation_settings.json"
+TOPICS_FILE = "conversation_topics.json"
 
 # New feature storage
 CUSTOM_COMMANDS = {}
@@ -131,6 +134,47 @@ def save_scheduled_messages():
     with open(SCHEDULED_MESSAGES_FILE, 'w') as f:
         json.dump(SCHEDULED_MESSAGES, f, indent=2)
 
+def load_notifications():
+    """Load notifications from file"""
+    global NOTIFICATIONS
+    if os.path.exists(NOTIFICATIONS_FILE):
+        with open(NOTIFICATIONS_FILE, 'r') as f:
+            NOTIFICATIONS = json.load(f)
+
+def save_notifications():
+    """Save notifications to file"""
+    with open(NOTIFICATIONS_FILE, 'w') as f:
+        json.dump(NOTIFICATIONS, f, indent=2)
+
+def load_moderation_settings():
+    """Load moderation settings from file"""
+    global AUTO_MOD_SETTINGS
+    if os.path.exists(MODERATION_SETTINGS_FILE):
+        with open(MODERATION_SETTINGS_FILE, 'r') as f:
+            AUTO_MOD_SETTINGS.update(json.load(f))
+
+def save_moderation_settings():
+    """Save moderation settings to file"""
+    with open(MODERATION_SETTINGS_FILE, 'w') as f:
+        json.dump(AUTO_MOD_SETTINGS, f, indent=2)
+
+def save_topics():
+    """Save conversation topics to file"""
+    # Convert defaultdict to regular dict for JSON serialization
+    topics_dict = {k: list(v) for k, v in CONVERSATION_TOPICS.items()}
+    with open(TOPICS_FILE, 'w') as f:
+        json.dump(topics_dict, f, indent=2)
+
+def load_topics():
+    """Load conversation topics from file"""
+    global CONVERSATION_TOPICS
+    if os.path.exists(TOPICS_FILE):
+        with open(TOPICS_FILE, 'r') as f:
+            topics_dict = json.load(f)
+            CONVERSATION_TOPICS = defaultdict(list)
+            for k, v in topics_dict.items():
+                CONVERSATION_TOPICS[k] = v
+
 # Advanced Memory Management
 MESSAGE_CACHE = deque(maxlen=2000)  # Increased cache size for better recall
 USER_PERSONALITIES = defaultdict(dict)
@@ -157,6 +201,9 @@ def initialize_files():
     load_custom_commands()
     load_user_profiles()
     load_scheduled_messages()
+    load_notifications()
+    load_moderation_settings()
+    load_topics()
 
 async def process_scheduled_messages():
     """Process and send scheduled messages"""
@@ -192,6 +239,12 @@ async def scheduled_message_loop():
     while True:
         await process_scheduled_messages()
         await asyncio.sleep(60)  # Check every minute
+
+async def notification_cleanup_loop():
+    """Background task to clean up old notifications"""
+    while True:
+        clear_old_notifications()
+        await asyncio.sleep(3600)  # Check every hour
 
 def clean_markdown(text):
     """Remove Discord markdown formatting"""
@@ -524,6 +577,11 @@ def extract_conversation_topics(message):
         # Keep only last 100 topics per channel
         if len(CONVERSATION_TOPICS[channel_id]) > 100:
             CONVERSATION_TOPICS[channel_id] = CONVERSATION_TOPICS[channel_id][-100:]
+        
+        # Save topics periodically (every 10 new topics)
+        total_topics = sum(len(topics) for topics in CONVERSATION_TOPICS.values())
+        if total_topics % 10 == 0:
+            save_topics()
 
 def add_notification(notification_type, title, message, priority="normal"):
     """Add a notification to the system"""
@@ -547,6 +605,9 @@ def add_notification(notification_type, title, message, priority="normal"):
     if len(NOTIFICATIONS) > 100:
         NOTIFICATIONS = NOTIFICATIONS[-100:]
     
+    # Save notifications to file
+    save_notifications()
+    
     # Log critical notifications
     if priority == "critical":
         print(f"🚨 CRITICAL NOTIFICATION: {title} - {message}")
@@ -556,6 +617,7 @@ def mark_notification_read(notification_id):
     for notification in NOTIFICATIONS:
         if notification["id"] == notification_id:
             notification["read"] = True
+            save_notifications()
             break
 
 def get_unread_notifications():
@@ -566,7 +628,10 @@ def clear_old_notifications():
     """Clear notifications older than 7 days"""
     global NOTIFICATIONS
     week_ago = datetime.now() - timedelta(days=7)
+    old_count = len(NOTIFICATIONS)
     NOTIFICATIONS = [n for n in NOTIFICATIONS if datetime.fromisoformat(n["timestamp"]) > week_ago]
+    if len(NOTIFICATIONS) != old_count:
+        save_notifications()
 
 # Semantic search setup
 embedder = SentenceTransformer('all-MiniLM-L6-v2')
@@ -868,9 +933,16 @@ async def on_ready():
     
     # Start scheduled message processing
     asyncio.create_task(scheduled_message_loop())
+    
+    # Start notification cleanup
+    asyncio.create_task(notification_cleanup_loop())
 
     # Load MLX model
     await load_mlx_model()
+    
+    # Add system startup notification
+    add_notification("system", "Bot Started", 
+                    f"Discord AI Bot started successfully at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", "normal")
 
 @bot.event
 async def on_message(message):
@@ -932,6 +1004,11 @@ async def on_message(message):
     if (bot.user.mentioned_in(message) or 
         message.content.lower().startswith(f"<@{bot.user.id}>") or
         message.content.lower().startswith(f"<@!{bot.user.id}>")):
+        
+        # Add mention notification
+        channel_name = message.channel.name if hasattr(message.channel, 'name') else 'DM'
+        add_notification("mention", "Bot Mentioned", 
+                       f"{message.author.name} mentioned the bot in #{channel_name}", "normal")
         
         # Semantic search for context
         query_embed = embedder.encode([clean_markdown(message.content)])

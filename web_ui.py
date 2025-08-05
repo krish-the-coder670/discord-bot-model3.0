@@ -17,6 +17,8 @@ SETUP_FILE = "setup_config.json"
 COMMANDS_FILE = "custom_commands.json"
 USER_PROFILES_FILE = "user_profiles.json"
 SCHEDULED_MESSAGES_FILE = "scheduled_messages.json"
+NOTIFICATIONS_FILE = "notifications.json"
+MODERATION_SETTINGS_FILE = "moderation_settings.json"
 
 def load_config():
     """Load bot configuration"""
@@ -80,6 +82,36 @@ def load_scheduled_messages():
             return json.load(f)
     return []
 
+def load_notifications():
+    """Load notifications"""
+    if os.path.exists(NOTIFICATIONS_FILE):
+        with open(NOTIFICATIONS_FILE, 'r') as f:
+            return json.load(f)
+    return []
+
+def save_notifications(notifications):
+    """Save notifications"""
+    with open(NOTIFICATIONS_FILE, 'w') as f:
+        json.dump(notifications, f, indent=2)
+
+def load_moderation_settings():
+    """Load moderation settings"""
+    if os.path.exists(MODERATION_SETTINGS_FILE):
+        with open(MODERATION_SETTINGS_FILE, 'r') as f:
+            return json.load(f)
+    return {
+        "spam_detection": True,
+        "word_filter": True,
+        "caps_limit": 0.7,
+        "spam_threshold": 5,
+        "filtered_words": ["spam", "scam", "phishing"]
+    }
+
+def save_moderation_settings(settings):
+    """Save moderation settings"""
+    with open(MODERATION_SETTINGS_FILE, 'w') as f:
+        json.dump(settings, f, indent=2)
+
 def get_sentiment_stats():
     """Get sentiment analysis statistics"""
     profiles = load_user_profiles()
@@ -102,17 +134,22 @@ def get_sentiment_stats():
     return sentiment_data
 
 def get_topic_stats():
-    """Get conversation topic statistics"""
-    # This would normally read from the bot's topic tracking
-    # For now, return sample data
-    return {
-        "gaming": 25,
-        "music": 18,
-        "movies": 15,
-        "food": 12,
-        "work": 10,
-        "technology": 20
-    }
+    """Get conversation topic statistics from bot data"""
+    # In a real implementation, this would read from the bot's topic tracking
+    # For now, we'll try to read from a topics file or return empty data
+    topics_file = "conversation_topics.json"
+    if os.path.exists(topics_file):
+        with open(topics_file, 'r') as f:
+            topics_data = json.load(f)
+            # Count topics across all channels
+            topic_counts = defaultdict(int)
+            for channel_topics in topics_data.values():
+                for topic_entry in channel_topics:
+                    topic_counts[topic_entry.get('topic', 'unknown')] += 1
+            return dict(topic_counts)
+    
+    # Return empty data if no topics file exists
+    return {}
 
 def get_chat_stats():
     """Get statistics from the CSV file"""
@@ -447,50 +484,48 @@ def moderation():
     if not setup_config.get('setup_complete', False):
         return redirect(url_for('setup'))
     
-    # Load moderation settings (would be from bot config in real implementation)
-    mod_settings = {
-        "spam_detection": True,
-        "word_filter": True,
-        "caps_limit": 0.7,
-        "spam_threshold": 5,
-        "filtered_words": ["spam", "scam", "phishing"]
-    }
-    
+    mod_settings = load_moderation_settings()
     return render_template('moderation.html', settings=mod_settings)
+
+@app.route('/api/moderation', methods=['GET', 'POST'])
+def api_moderation():
+    """API for moderation settings"""
+    if request.method == 'GET':
+        return jsonify(load_moderation_settings())
+    
+    elif request.method == 'POST':
+        data = request.get_json()
+        save_moderation_settings(data)
+        return jsonify({"success": True, "message": "Moderation settings updated successfully"})
 
 @app.route('/api/notifications')
 def api_notifications():
     """API for getting notifications"""
-    # In a real implementation, this would read from the bot's notification system
-    # For now, return sample data
-    notifications = [
-        {
-            "id": "notif1",
-            "type": "mention",
-            "title": "Bot mentioned",
-            "message": "User123 mentioned the bot in #general",
-            "priority": "normal",
-            "timestamp": datetime.now().isoformat(),
-            "read": False
-        },
-        {
-            "id": "notif2",
-            "type": "new_user",
-            "title": "New user joined",
-            "message": "NewUser sent their first message",
-            "priority": "low",
-            "timestamp": (datetime.now() - timedelta(minutes=5)).isoformat(),
-            "read": True
-        }
-    ]
-    
+    notifications = load_notifications()
+    # Sort by timestamp, newest first
+    notifications.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
     return jsonify(notifications)
 
 @app.route('/api/notifications/<notification_id>/read', methods=['POST'])
 def mark_notification_read(notification_id):
     """Mark a notification as read"""
-    # In a real implementation, this would update the bot's notification system
-    return jsonify({"success": True, "message": "Notification marked as read"})
+    notifications = load_notifications()
+    for notification in notifications:
+        if notification.get('id') == notification_id:
+            notification['read'] = True
+            save_notifications(notifications)
+            return jsonify({"success": True, "message": "Notification marked as read"})
+    
+    return jsonify({"success": False, "message": "Notification not found"}), 404
+
+@app.route('/api/notifications/mark_all_read', methods=['POST'])
+def mark_all_notifications_read():
+    """Mark all notifications as read"""
+    notifications = load_notifications()
+    for notification in notifications:
+        notification['read'] = True
+    save_notifications(notifications)
+    return jsonify({"success": True, "message": "All notifications marked as read"})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000) 
