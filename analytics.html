@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics - Discord Bot Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-chart-bar me-2"></i>Chat Analytics
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Message Activity Chart -->
+    <div class="col-md-8 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-line me-2"></i>Message Activity</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="messageChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Activity -->
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-users me-2"></i>User Activity</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="userChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Detailed Statistics -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-list me-2"></i>Message Statistics</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="text-center mb-3">
+                            <h3 class="text-primary">{{ stats.total_messages|default(0) }}</h3>
+                            <p class="text-muted">Total Messages</p>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-center mb-3">
+                            <h3 class="text-success">{{ stats.unique_users|default(0) }}</h3>
+                            <p class="text-muted">Unique Users</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-6">
+                        <div class="text-center mb-3">
+                            <h3 class="text-warning">{{ stats.messages_today|default(0) }}</h3>
+                            <p class="text-muted">Messages Today</p>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-center mb-3">
+                            <h3 class="text-info">{{ "%.1f"|format((stats.total_messages|default(0)) / (stats.unique_users|default(1))) }}</h3>
+                            <p class="text-muted">Avg per User</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Users Table -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-trophy me-2"></i>Top Users</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>User</th>
+                                <th>Messages</th>
+                                <th>Percentage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if stats.top_users %}
+                                {% for user, count in stats.top_users.items() %}
+                                <tr>
+                                    <td>
+                                        {% if loop.index == 1 %}
+                                            <i class="fas fa-crown text-warning"></i>
+                                        {% elif loop.index == 2 %}
+                                            <i class="fas fa-medal text-secondary"></i>
+                                        {% elif loop.index == 3 %}
+                                            <i class="fas fa-medal text-bronze"></i>
+                                        {% else %}
+                                            {{ loop.index }}
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ user }}</td>
+                                    <td>{{ count }}</td>
+                                    <td>{{ "%.1f"|format((count / stats.total_messages) * 100) }}%</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted">No data available</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Activity Timeline -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-clock me-2"></i>Recent Activity</h5>
+            </div>
+            <div class="card-body">
+                <div id="activityTimeline">
+                    <!-- Activity items will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Message Activity Chart
+const messageCtx = document.getElementById('messageChart').getContext('2d');
+const messageChart = new Chart(messageCtx, {
+    type: 'line',
+    data: {
+        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+        datasets: [{
+            label: 'Messages',
+            data: [12, 19, 3, 5, 2, 3, 7],
+            borderColor: 'rgb(75, 192, 192)',
+            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+            tension: 0.1
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: {
+                position: 'top',
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        }
+    }
+});
+
+// User Activity Chart
+const userCtx = document.getElementById('userChart').getContext('2d');
+const userChart = new Chart(userCtx, {
+    type: 'doughnut',
+    data: {
+        labels: [
+            {% if stats.top_users %}
+                {% for user in stats.top_users.keys() %}
+                    '{{ user }}',
+                {% endfor %}
+            {% endif %}
+        ],
+        datasets: [{
+            data: [
+                {% if stats.top_users %}
+                    {% for count in stats.top_users.values() %}
+                        {{ count }},
+                    {% endfor %}
+                {% endif %}
+            ],
+            backgroundColor: [
+                '#FF6384',
+                '#36A2EB',
+                '#FFCE56',
+                '#4BC0C0',
+                '#9966FF'
+            ]
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: {
+                position: 'bottom',
+            }
+        }
+    }
+});
+
+// Load recent activity
+function loadRecentActivity() {
+    fetch('/api/chat_stats')
+        .then(response => response.json())
+        .then(data => {
+            const timeline = document.getElementById('activityTimeline');
+            timeline.innerHTML = '<p class="text-muted text-center">Loading recent activity...</p>';
+            
+            // Simulate loading recent messages
+            setTimeout(() => {
+                timeline.innerHTML = `
+                    <div class="timeline-item">
+                        <div class="d-flex">
+                            <div class="flex-shrink-0">
+                                <div class="bg-primary rounded-circle d-inline-flex align-items-center justify-content-center" 
+                                     style="width: 40px; height: 40px;">
+                                    <i class="fas fa-user text-white"></i>
+                                </div>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h6 class="mb-1">Most Active User: ${data.most_active_user || 'None'}</h6>
+                                <p class="text-muted mb-0">${data.total_messages || 0} total messages</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="timeline-item">
+                        <div class="d-flex">
+                            <div class="flex-shrink-0">
+                                <div class="bg-success rounded-circle d-inline-flex align-items-center justify-content-center" 
+                                     style="width: 40px; height: 40px;">
+                                    <i class="fas fa-calendar-day text-white"></i>
+                                </div>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h6 class="mb-1">Today's Activity</h6>
+                                <p class="text-muted mb-0">${data.messages_today || 0} messages today</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }, 1000);
+        })
+        .catch(error => {
+            console.error('Error loading activity:', error);
+        });
+}
+
+// Auto-refresh charts every 30 seconds
+setInterval(() => {
+    loadRecentActivity();
+}, 30000);
+
+// Initial load
+loadRecentActivity();
+</script>
+{% endblock %} 

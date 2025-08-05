@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Discord Bot Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-cog me-2"></i>Bot Settings
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-sliders-h me-2"></i>Behavior Settings</h5>
+            </div>
+            <div class="card-body">
+                <form id="settingsForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Response Features</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="emoji_usage" name="emoji_usage" 
+                                           {{ 'checked' if config.emoji_usage }}>
+                                    <label class="form-check-label" for="emoji_usage">
+                                        Use Emojis in Responses
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="slang_usage" name="slang_usage" 
+                                           {{ 'checked' if config.slang_usage }}>
+                                    <label class="form-check-label" for="slang_usage">
+                                        Use Slang and Informal Language
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="auto_respond" name="auto_respond" 
+                                           {{ 'checked' if config.auto_respond }}>
+                                    <label class="form-check-label" for="auto_respond">
+                                        Auto-respond to All Messages
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Personality Traits</label>
+                                <div class="mb-3">
+                                    <label for="sarcasm_level" class="form-label">Sarcasm Level</label>
+                                    <input type="range" class="form-range" id="sarcasm_level" name="sarcasm_level" 
+                                           min="0" max="1" step="0.1" value="{{ config.personality_traits.sarcasm_level }}">
+                                    <div class="d-flex justify-content-between">
+                                        <small>Low</small>
+                                        <small id="sarcasm_value">{{ config.personality_traits.sarcasm_level }}</small>
+                                        <small>High</small>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="humor_level" class="form-label">Humor Level</label>
+                                    <input type="range" class="form-range" id="humor_level" name="humor_level" 
+                                           min="0" max="1" step="0.1" value="{{ config.personality_traits.humor_level }}">
+                                    <div class="d-flex justify-content-between">
+                                        <small>Serious</small>
+                                        <small id="humor_value">{{ config.personality_traits.humor_level }}</small>
+                                        <small>Funny</small>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="formality_level" class="form-label">Formality Level</label>
+                                    <input type="range" class="form-range" id="formality_level" name="formality_level" 
+                                           min="0" max="1" step="0.1" value="{{ config.personality_traits.formality_level }}">
+                                    <div class="d-flex justify-content-between">
+                                        <small>Casual</small>
+                                        <small id="formality_value">{{ config.personality_traits.formality_level }}</small>
+                                        <small>Formal</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <button type="button" class="btn btn-secondary me-md-2" onclick="resetSettings()">
+                            <i class="fas fa-undo me-1"></i>Reset to Defaults
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i>Save Settings
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle me-2"></i>Settings Preview</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <h6>Response Style</h6>
+                    <div id="preview_response">
+                        <span class="badge bg-{{ 'success' if config.emoji_usage else 'secondary' }} me-1">Emojis</span>
+                        <span class="badge bg-{{ 'success' if config.slang_usage else 'secondary' }} me-1">Slang</span>
+                        <span class="badge bg-{{ 'success' if config.auto_respond else 'secondary' }}">Auto-respond</span>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <h6>Personality</h6>
+                    <div class="small">
+                        <p><strong>Sarcasm:</strong> <span id="preview_sarcasm">{{ config.personality_traits.sarcasm_level }}</span></p>
+                        <p><strong>Humor:</strong> <span id="preview_humor">{{ config.personality_traits.humor_level }}</span></p>
+                        <p><strong>Formality:</strong> <span id="preview_formality">{{ config.personality_traits.formality_level }}</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5><i class="fas fa-exclamation-triangle me-2"></i>Important Notes</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled small">
+                    <li class="mb-2"><i class="fas fa-info text-info me-2"></i>Settings apply to all responses</li>
+                    <li class="mb-2"><i class="fas fa-info text-info me-2"></i>Auto-respond may spam the chat</li>
+                    <li class="mb-2"><i class="fas fa-info text-info me-2"></i>Personality traits affect response tone</li>
+                    <li class="mb-2"><i class="fas fa-info text-info me-2"></i>Changes take effect immediately</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('settingsForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    
+    // Convert checkbox values to strings
+    formData.set('emoji_usage', document.getElementById('emoji_usage').checked.toString());
+    formData.set('slang_usage', document.getElementById('slang_usage').checked.toString());
+    formData.set('auto_respond', document.getElementById('auto_respond').checked.toString());
+    
+    fetch('/api/update_settings', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message);
+            updatePreview();
+        } else {
+            showAlert('danger', 'Error updating settings');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('danger', 'Error updating settings');
+    });
+});
+
+function updatePreview() {
+    const emojiUsage = document.getElementById('emoji_usage').checked;
+    const slangUsage = document.getElementById('slang_usage').checked;
+    const autoRespond = document.getElementById('auto_respond').checked;
+    
+    const sarcasmLevel = document.getElementById('sarcasm_level').value;
+    const humorLevel = document.getElementById('humor_level').value;
+    const formalityLevel = document.getElementById('formality_level').value;
+    
+    // Update preview badges
+    document.querySelector('#preview_response .badge:nth-child(1)').className = 
+        `badge bg-${emojiUsage ? 'success' : 'secondary'} me-1`;
+    document.querySelector('#preview_response .badge:nth-child(2)').className = 
+        `badge bg-${slangUsage ? 'success' : 'secondary'} me-1`;
+    document.querySelector('#preview_response .badge:nth-child(3)').className = 
+        `badge bg-${autoRespond ? 'success' : 'secondary'}`;
+    
+    // Update personality values
+    document.getElementById('preview_sarcasm').textContent = sarcasmLevel;
+    document.getElementById('preview_humor').textContent = humorLevel;
+    document.getElementById('preview_formality').textContent = formalityLevel;
+}
+
+function resetSettings() {
+    if (confirm('Are you sure you want to reset all settings to defaults?')) {
+        document.getElementById('emoji_usage').checked = true;
+        document.getElementById('slang_usage').checked = true;
+        document.getElementById('auto_respond').checked = false;
+        document.getElementById('sarcasm_level').value = 0.5;
+        document.getElementById('humor_level').value = 0.7;
+        document.getElementById('formality_level').value = 0.2;
+        
+        updatePreview();
+        updateRangeValues();
+    }
+}
+
+function updateRangeValues() {
+    document.getElementById('sarcasm_value').textContent = document.getElementById('sarcasm_level').value;
+    document.getElementById('humor_value').textContent = document.getElementById('humor_level').value;
+    document.getElementById('formality_value').textContent = document.getElementById('formality_level').value;
+}
+
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.row'));
+    
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+
+// Update preview and range values on input changes
+document.getElementById('emoji_usage').addEventListener('change', updatePreview);
+document.getElementById('slang_usage').addEventListener('change', updatePreview);
+document.getElementById('auto_respond').addEventListener('change', updatePreview);
+
+document.getElementById('sarcasm_level').addEventListener('input', function() {
+    updatePreview();
+    updateRangeValues();
+});
+document.getElementById('humor_level').addEventListener('input', function() {
+    updatePreview();
+    updateRangeValues();
+});
+document.getElementById('formality_level').addEventListener('input', function() {
+    updatePreview();
+    updateRangeValues();
+});
+</script>
+{% endblock %} 

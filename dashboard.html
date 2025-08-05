@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Discord Bot Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Statistics Cards -->
+    <div class="col-md-3 mb-4">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">{{ stats.total_messages|default(0) }}</h4>
+                        <p class="card-text">Total Messages</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-comments fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">{{ stats.unique_users|default(0) }}</h4>
+                        <p class="card-text">Unique Users</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-users fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">{{ stats.messages_today|default(0) }}</h4>
+                        <p class="card-text">Messages Today</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-calendar-day fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">{{ stats.most_active_user|default("None") }}</h4>
+                        <p class="card-text">Most Active User</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-crown fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Bot Status -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-robot me-2"></i>Bot Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <p><strong>Name:</strong> {{ config.bot_name }}</p>
+                        <p><strong>Bio:</strong> {{ config.bot_bio }}</p>
+                        <p><strong>Response Style:</strong> {{ config.response_style|title }}</p>
+                    </div>
+                    <div class="col-6">
+                        <p><strong>Emoji Usage:</strong> 
+                            <span class="badge bg-{{ 'success' if config.emoji_usage else 'secondary' }}">
+                                {{ 'Enabled' if config.emoji_usage else 'Disabled' }}
+                            </span>
+                        </p>
+                        <p><strong>Slang Usage:</strong> 
+                            <span class="badge bg-{{ 'success' if config.slang_usage else 'secondary' }}">
+                                {{ 'Enabled' if config.slang_usage else 'Disabled' }}
+                            </span>
+                        </p>
+                        <p><strong>Auto Respond:</strong> 
+                            <span class="badge bg-{{ 'success' if config.auto_respond else 'secondary' }}">
+                                {{ 'Enabled' if config.auto_respond else 'Disabled' }}
+                            </span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Users -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-bar me-2"></i>Top Users</h5>
+            </div>
+            <div class="card-body">
+                {% if stats.top_users %}
+                    {% for user, count in stats.top_users.items() %}
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span>{{ user }}</span>
+                        <span class="badge bg-primary">{{ count }} messages</span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">No data available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Quick Actions -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-bolt me-2"></i>Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <a href="/profile" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-user me-2"></i>Edit Profile
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <a href="/settings" class="btn btn-outline-secondary w-100">
+                            <i class="fas fa-cog me-2"></i>Bot Settings
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <a href="/analytics" class="btn btn-outline-info w-100">
+                            <i class="fas fa-chart-line me-2"></i>View Analytics
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-outline-success w-100" onclick="refreshStats()">
+                            <i class="fas fa-sync-alt me-2"></i>Refresh Stats
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function refreshStats() {
+    fetch('/api/chat_stats')
+        .then(response => response.json())
+        .then(data => {
+            location.reload();
+        })
+        .catch(error => {
+            console.error('Error refreshing stats:', error);
+        });
+}
+
+// Auto-refresh stats every 30 seconds
+setInterval(refreshStats, 30000);
+</script>
+{% endblock %} 

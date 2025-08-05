@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+
+{% block title %}Setup - Discord Bot Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-cog me-2"></i>Initial Setup
+        </h1>
+        <p class="text-muted">Let's get your Discord AI chatbot configured!</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-wizard-hat me-2"></i>Setup Wizard</h5>
+            </div>
+            <div class="card-body">
+                <form id="setupForm">
+                    <!-- Step 1: Discord Token -->
+                    <div class="setup-step" id="step1">
+                        <h6 class="text-primary mb-3">
+                            <i class="fas fa-key me-2"></i>Step 1: Discord Account Token
+                        </h6>
+                        
+                        <div class="alert alert-info">
+                            <h6><i class="fas fa-info-circle me-2"></i>How to get your Discord Account Token:</h6>
+                            <ol class="mb-0">
+                                <li>Open Discord in your web browser (not the app)</li>
+                                <li>Press <kbd>F12</kbd> to open Developer Tools</li>
+                                <li>Go to the <strong>Network</strong> tab</li>
+                                <li>In Discord, go to <strong>User Settings</strong> → <strong>Advanced</strong> → <strong>Developer Mode</strong> (turn it on)</li>
+                                <li>Go back to <strong>User Settings</strong> → <strong>My Account</strong></li>
+                                <li>Right-click on your username and select <strong>Copy ID</strong></li>
+                                <li>In the Network tab, look for requests to <code>discord.com/api/v9/users/@me</code></li>
+                                <li>Click on that request and find the <strong>authorization</strong> header</li>
+                                <li>Copy the value (it starts with <code>MTA</code> or <code>MTI</code>)</li>
+                            </ol>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="discord_token" class="form-label">Discord Account Token</label>
+                            <input type="password" class="form-control" id="discord_token" name="discord_token" 
+                                   value="{{ config.discord_token }}" placeholder="MTA..." required>
+                            <div class="form-text">This is your personal Discord account token (not a bot token)</div>
+                        </div>
+
+                        <button type="button" class="btn btn-outline-primary" onclick="testDiscordToken()">
+                            <i class="fas fa-check me-1"></i>Test Token
+                        </button>
+                    </div>
+
+                    <!-- Step 2: Hugging Face Token -->
+                    <div class="setup-step" id="step2" style="display: none;">
+                        <h6 class="text-primary mb-3">
+                            <i class="fas fa-brain me-2"></i>Step 2: Hugging Face Token (Optional)
+                        </h6>
+                        
+                        <div class="alert alert-warning">
+                            <h6><i class="fas fa-exclamation-triangle me-2"></i>Optional but Recommended:</h6>
+                            <p class="mb-0">A Hugging Face token allows the bot to download AI models faster and access more features. You can get one for free at <a href="https://huggingface.co/settings/tokens" target="_blank">https://huggingface.co/settings/tokens</a></p>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="huggingface_token" class="form-label">Hugging Face Token</label>
+                            <input type="password" class="form-control" id="huggingface_token" name="huggingface_token" 
+                                   value="{{ config.huggingface_token }}" placeholder="hf_...">
+                            <div class="form-text">Optional: Enter your Hugging Face token for better model access</div>
+                        </div>
+
+                        <button type="button" class="btn btn-outline-secondary" onclick="skipHuggingFace()">
+                            <i class="fas fa-forward me-1"></i>Skip for Now
+                        </button>
+                    </div>
+
+                    <!-- Step 3: CSV File Path -->
+                    <div class="setup-step" id="step3" style="display: none;">
+                        <h6 class="text-primary mb-3">
+                            <i class="fas fa-file-csv me-2"></i>Step 3: Chat History File
+                        </h6>
+                        
+                        <div class="alert alert-success">
+                            <h6><i class="fas fa-check-circle me-2"></i>CSV File Found!</h6>
+                            <p class="mb-0">We detected your chat history file. The bot will learn from this data to respond more naturally.</p>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="csv_file_path" class="form-label">CSV File Path</label>
+                            <input type="text" class="form-control" id="csv_file_path" name="csv_file_path" 
+                                   value="{{ config.csv_file_path }}" required>
+                            <div class="form-text">Path to your chat history CSV file</div>
+                        </div>
+
+                        <button type="button" class="btn btn-outline-primary" onclick="testCSVPath()">
+                            <i class="fas fa-check me-1"></i>Test File
+                        </button>
+                    </div>
+
+                    <!-- Step 4: Complete Setup -->
+                    <div class="setup-step" id="step4" style="display: none;">
+                        <h6 class="text-primary mb-3">
+                            <i class="fas fa-rocket me-2"></i>Step 4: Complete Setup
+                        </h6>
+                        
+                        <div class="alert alert-success">
+                            <h6><i class="fas fa-check-circle me-2"></i>Ready to Launch!</h6>
+                            <p class="mb-0">All configuration looks good. Click the button below to complete setup and start your Discord AI chatbot!</p>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-success btn-lg">
+                                <i class="fas fa-play me-2"></i>Complete Setup & Start Bot
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Navigation -->
+                    <div class="d-flex justify-content-between mt-4">
+                        <button type="button" class="btn btn-secondary" onclick="previousStep()" id="prevBtn" style="display: none;">
+                            <i class="fas fa-arrow-left me-1"></i>Previous
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="nextStep()" id="nextBtn">
+                            Next <i class="fas fa-arrow-right me-1"></i>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Help Section -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5><i class="fas fa-question-circle me-2"></i>Need Help?</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-video me-2"></i>Video Tutorial</h6>
+                        <p class="small text-muted">Watch a step-by-step video on how to get your Discord token</p>
+                        <a href="#" class="btn btn-outline-primary btn-sm">Watch Tutorial</a>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-book me-2"></i>Documentation</h6>
+                        <p class="small text-muted">Read the detailed setup guide</p>
+                        <a href="#" class="btn btn-outline-secondary btn-sm">Read Guide</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentStep = 1;
+const totalSteps = 4;
+
+function showStep(step) {
+    // Hide all steps
+    for (let i = 1; i <= totalSteps; i++) {
+        document.getElementById(`step${i}`).style.display = 'none';
+    }
+    
+    // Show current step
+    document.getElementById(`step${step}`).style.display = 'block';
+    
+    // Update navigation buttons
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    
+    if (step === 1) {
+        prevBtn.style.display = 'none';
+    } else {
+        prevBtn.style.display = 'block';
+    }
+    
+    if (step === totalSteps) {
+        nextBtn.style.display = 'none';
+    } else {
+        nextBtn.style.display = 'block';
+    }
+}
+
+function nextStep() {
+    if (currentStep < totalSteps) {
+        currentStep++;
+        showStep(currentStep);
+    }
+}
+
+function previousStep() {
+    if (currentStep > 1) {
+        currentStep--;
+        showStep(currentStep);
+    }
+}
+
+function skipHuggingFace() {
+    document.getElementById('huggingface_token').value = '';
+    nextStep();
+}
+
+async function testDiscordToken() {
+    const token = document.getElementById('discord_token').value;
+    
+    if (!token) {
+        showAlert('warning', 'Please enter your Discord token first');
+        return;
+    }
+    
+    const response = await fetch('/api/test_discord_token', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `discord_token=${encodeURIComponent(token)}`
+    });
+    
+    const data = await response.json();
+    showAlert(data.success ? 'success' : 'danger', data.message);
+}
+
+async function testCSVPath() {
+    const csvPath = document.getElementById('csv_file_path').value;
+    
+    if (!csvPath) {
+        showAlert('warning', 'Please enter a CSV file path first');
+        return;
+    }
+    
+    const response = await fetch('/api/test_csv_path', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `csv_file_path=${encodeURIComponent(csvPath)}`
+    });
+    
+    const data = await response.json();
+    showAlert(data.success ? 'success' : 'danger', data.message);
+}
+
+document.getElementById('setupForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    
+    try {
+        const response = await fetch('/api/save_setup', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showAlert('success', data.message);
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 2000);
+        } else {
+            showAlert('danger', 'Error saving setup configuration');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showAlert('danger', 'Error saving setup configuration');
+    }
+});
+
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.row'));
+    
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+
+// Initialize first step
+showStep(1);
+</script>
+{% endblock %} 

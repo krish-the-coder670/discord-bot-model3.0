@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - Discord Bot Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-user me-2"></i>Bot Profile
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-edit me-2"></i>Edit Profile</h5>
+            </div>
+            <div class="card-body">
+                <form id="profileForm">
+                    <div class="mb-3">
+                        <label for="bot_name" class="form-label">Bot Name</label>
+                        <input type="text" class="form-control" id="bot_name" name="bot_name" 
+                               value="{{ config.bot_name }}" required>
+                        <div class="form-text">This will be the name displayed in Discord</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="bot_bio" class="form-label">Bio/Status</label>
+                        <textarea class="form-control" id="bot_bio" name="bot_bio" rows="3" 
+                                  placeholder="Enter a bio or status message...">{{ config.bot_bio }}</textarea>
+                        <div class="form-text">This will appear as your status or bio in Discord</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="response_style" class="form-label">Response Style</label>
+                        <select class="form-select" id="response_style" name="response_style">
+                            <option value="casual" {{ 'selected' if config.response_style == 'casual' }}>Casual</option>
+                            <option value="formal" {{ 'selected' if config.response_style == 'formal' }}>Formal</option>
+                            <option value="sarcastic" {{ 'selected' if config.response_style == 'sarcastic' }}>Sarcastic</option>
+                            <option value="humorous" {{ 'selected' if config.response_style == 'humorous' }}>Humorous</option>
+                            <option value="friendly" {{ 'selected' if config.response_style == 'friendly' }}>Friendly</option>
+                        </select>
+                        <div class="form-text">Choose how the bot should respond to messages</div>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <button type="button" class="btn btn-secondary me-md-2" onclick="resetForm()">
+                            <i class="fas fa-undo me-1"></i>Reset
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i>Save Changes
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle me-2"></i>Profile Preview</h5>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <div class="bg-primary rounded-circle d-inline-flex align-items-center justify-content-center" 
+                         style="width: 80px; height: 80px;">
+                        <i class="fas fa-robot fa-2x text-white"></i>
+                    </div>
+                </div>
+                <h6 class="text-center" id="preview_name">{{ config.bot_name }}</h6>
+                <p class="text-muted text-center small" id="preview_bio">{{ config.bot_bio }}</p>
+                <hr>
+                <div class="small">
+                    <p><strong>Response Style:</strong> <span id="preview_style">{{ config.response_style|title }}</span></p>
+                    <p><strong>Status:</strong> <span class="badge bg-success">Online</span></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5><i class="fas fa-lightbulb me-2"></i>Tips</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled small">
+                    <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Keep the name short and memorable</li>
+                    <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Bio should reflect the bot's personality</li>
+                    <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Response style affects how the bot interacts</li>
+                    <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Changes take effect immediately</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('profileForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    
+    fetch('/api/update_profile', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message);
+            updatePreview();
+        } else {
+            showAlert('danger', 'Error updating profile');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('danger', 'Error updating profile');
+    });
+});
+
+function updatePreview() {
+    const name = document.getElementById('bot_name').value;
+    const bio = document.getElementById('bot_bio').value;
+    const style = document.getElementById('response_style').value;
+    
+    document.getElementById('preview_name').textContent = name;
+    document.getElementById('preview_bio').textContent = bio;
+    document.getElementById('preview_style').textContent = style.charAt(0).toUpperCase() + style.slice(1);
+}
+
+function resetForm() {
+    document.getElementById('profileForm').reset();
+    updatePreview();
+}
+
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.row'));
+    
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+
+// Update preview on input changes
+document.getElementById('bot_name').addEventListener('input', updatePreview);
+document.getElementById('bot_bio').addEventListener('input', updatePreview);
+document.getElementById('response_style').addEventListener('change', updatePreview);
+</script>
+{% endblock %} 
