@@ -62,9 +62,7 @@ DEBUG_CHANNEL = None  # Assign this to a specific channel ID after initializatio
 MEMORY_THRESHOLD = 75  # Adjusted threshold for responsiveness
 LAST_MEMORY_WARNING = None
 
-# Rate limiting
-USER_RATE_LIMITS = defaultdict(lambda: {'count': 0, 'reset_time': datetime.now()})
-MAX_REQUESTS_PER_MINUTE = 5
+
 
 def initialize_files():
     """Initialize CSV file if it doesn't exist"""
@@ -688,27 +686,10 @@ async def on_message(message):
         index_file = "embeddings.index"
         faiss.write_index(index, index_file)
     
-    # Check rate limiting
-    user_id = message.author.id
-    current_time = datetime.now()
-    
-    # Reset rate limit counter if a minute has passed
-    if (current_time - USER_RATE_LIMITS[user_id]['reset_time']).seconds >= 60:
-        USER_RATE_LIMITS[user_id]['count'] = 0
-        USER_RATE_LIMITS[user_id]['reset_time'] = current_time
-    
-    # Check if user has exceeded rate limit
-    if USER_RATE_LIMITS[user_id]['count'] >= MAX_REQUESTS_PER_MINUTE:
-        print(f"Rate limit exceeded for user {message.author.name}")
-        return
-    
     # Respond to mentions or when directly addressed
     if (bot.user.mentioned_in(message) or 
         message.content.lower().startswith(f"<@{bot.user.id}>") or
         message.content.lower().startswith(f"<@!{bot.user.id}>")):
-        
-        # Increment rate limit counter
-        USER_RATE_LIMITS[user_id]['count'] += 1
         
         # Semantic search for context
         query_embed = embedder.encode([clean_markdown(message.content)])
