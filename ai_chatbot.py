@@ -1,31 +1,78 @@
-import discord
-import pandas as pd
-import numpy as np
 import csv
 import os
 import re
 import json
 from datetime import datetime, timedelta
-from mlx_lm import load, generate
-from sentence_transformers import SentenceTransformer
-import faiss
-import mlx.core as mx
-import emoji
-import markdown
-from bs4 import BeautifulSoup
 import asyncio
-import psutil
 import threading
 import time
 from collections import deque, defaultdict
 import pickle
 import hashlib
 
+# Import with error handling
+try:
+    import discord
+    DISCORD_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Discord.py not available: {e}")
+    DISCORD_AVAILABLE = False
+    discord = None
+
+try:
+    import pandas as pd
+    import numpy as np
+    PANDAS_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Pandas/NumPy not available: {e}")
+    PANDAS_AVAILABLE = False
+    pd = None
+    np = None
+
+try:
+    from mlx_lm import load, generate
+    import mlx.core as mx
+    MLX_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: MLX not available: {e}")
+    MLX_AVAILABLE = False
+    load = None
+    generate = None
+    mx = None
+
+try:
+    from sentence_transformers import SentenceTransformer
+    import faiss
+    EMBEDDINGS_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Sentence transformers/FAISS not available: {e}")
+    EMBEDDINGS_AVAILABLE = False
+    SentenceTransformer = None
+    faiss = None
+
+try:
+    import emoji
+    import markdown
+    from bs4 import BeautifulSoup
+    import psutil
+    TEXT_PROCESSING_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Text processing libraries not available: {e}")
+    TEXT_PROCESSING_AVAILABLE = False
+    emoji = None
+    markdown = None
+    BeautifulSoup = None
+    psutil = None
+
 # Discord.py-self setup for real account
-intents = discord.Intents.default()
-intents.messages = True
-intents.message_content = True
-bot = discord.Client(intents=intents)
+if DISCORD_AVAILABLE:
+    intents = discord.Intents.default()
+    intents.messages = True
+    intents.message_content = True
+    bot = discord.Client(intents=intents)
+else:
+    bot = None
+    print("Discord bot not available - Discord.py import failed")
 
 # Configuration files
 CONFIG_FILE = "bot_config.json"
@@ -89,7 +136,9 @@ def clean_markdown(text):
 
 def extract_emojis(text):
     """Extract emojis and convert to descriptions"""
-    return emoji.demojize(text, delimiters=("[", "]"))
+    if TEXT_PROCESSING_AVAILABLE and emoji:
+        return emoji.demojize(text, delimiters=("[", "]"))
+    return text
 
 def update_csv(message):
     """Update CSV with new message, cleaning markdown and handling emojis"""
@@ -129,7 +178,7 @@ def analyze_user_personality(username):
     setup_config = load_setup_config()
     csv_file = setup_config.get('csv_file_path', 'Downloads/GC data.csv')
     
-    if not os.path.exists(csv_file):
+    if not os.path.exists(csv_file) or not PANDAS_AVAILABLE:
         return "neutral"
     
     df = pd.read_csv(csv_file)
@@ -144,7 +193,7 @@ def analyze_user_personality(username):
         'uses_caps': any(msg.isupper() for msg in user_messages),
         'uses_abbreviations': any(len(msg.split()) < 3 for msg in user_messages),
         'uses_slang': any(word in ' '.join(user_messages).lower() for word in ['bruh', 'fr', 'ngl', 'smh', 'jk']),
-        'message_length': np.mean([len(msg) for msg in user_messages]),
+        'message_length': sum(len(msg) for msg in user_messages) / len(user_messages) if user_messages else 0,
         'common_words': []
     }
     
@@ -162,29 +211,50 @@ def analyze_user_personality(username):
 def generate_user_style_response(username, base_response):
     """Generate response reflecting user's communication style"""
     personality = analyze_user_personality(username)
+    
+    if personality == "neutral":
+        return base_response
 
     # Tailor response based on traits
-    if personality['uses_emojis']:
-        base_response += " " + np.random.choice(['🙂', '😄', '😂'], p=[0.5, 0.3, 0.2])
+    if personality.get('uses_emojis', False):
+        import random
+        emojis = ['🙂', '😄', '😂']
+        base_response += " " + random.choice(emojis)
 
-    if personality['uses_slang']:
+    if personality.get('uses_slang', False):
         slang_mappings = {"I think": "ngl", "I believe": "fr", "really": "rly", "you know": "y'know"}
         for key, val in slang_mappings.items():
             base_response = base_response.replace(key, val)
 
-    if personality['uses_caps']:
+    if personality.get('uses_caps', False):
         base_response = base_response.upper()
 
-    base_response += " " + "!" * np.random.randint(1, 3)  # Add excitement
+    import random
+    base_response += " " + "!" * random.randint(1, 2)  # Add excitement
 
     return base_response
 
 # Semantic search setup
-embedder = SentenceTransformer('all-MiniLM-L6-v2')
-index = faiss.IndexFlatIP(384)  # Match MiniLM dimension
+if EMBEDDINGS_AVAILABLE:
+    try:
+        embedder = SentenceTransformer('all-MiniLM-L6-v2')
+        index = faiss.IndexFlatIP(384)  # Match MiniLM dimension
+        print("✅ Embeddings system initialized")
+    except Exception as e:
+        print(f"Warning: Failed to initialize embeddings: {e}")
+        embedder = None
+        index = None
+        EMBEDDINGS_AVAILABLE = False
+else:
+    embedder = None
+    index = None
 
 def build_index():
     """Build FAISS index from CSV data"""
+    if not EMBEDDINGS_AVAILABLE or not PANDAS_AVAILABLE:
+        print("Skipping index build - required libraries not available")
+        return
+        
     setup_config = load_setup_config()
     csv_file = setup_config.get('csv_file_path', 'Downloads/GC data.csv')
     
@@ -192,19 +262,22 @@ def build_index():
         print(f"CSV file not found: {csv_file}")
         return
     
-    df = pd.read_csv(csv_file)
-    if len(df) == 0:
-        print("CSV file is empty")
-        return
-    
-    embeddings = embedder.encode(df['Content'].tolist())
-    faiss.normalize_L2(embeddings)
-    index.add(embeddings)
-    
-    # Save index
-    index_file = "embeddings.index"
-    faiss.write_index(index, index_file)
-    print(f"Built index with {len(df)} messages")
+    try:
+        df = pd.read_csv(csv_file)
+        if len(df) == 0:
+            print("CSV file is empty")
+            return
+        
+        embeddings = embedder.encode(df['Content'].tolist())
+        faiss.normalize_L2(embeddings)
+        index.add(embeddings)
+        
+        # Save index
+        index_file = "embeddings.index"
+        faiss.write_index(index, index_file)
+        print(f"✅ Built index with {len(df)} messages")
+    except Exception as e:
+        print(f"Error building index: {e}")
 
 # MLX model setup
 model, tokenizer = None, None
@@ -219,6 +292,10 @@ async def send_debug_message(channel, message):
 async def monitor_system_resources():
     """Monitor system resources and send warnings"""
     global LAST_MEMORY_WARNING, SYSTEM_MONITOR
+    
+    if not TEXT_PROCESSING_AVAILABLE or not psutil:
+        print("System monitoring disabled - psutil not available")
+        return
     
     while True:
         try:
@@ -344,6 +421,12 @@ async def load_mlx_model():
     """Load MLX model with Hugging Face token if available"""
     global model, tokenizer, MODEL_STATUS
     
+    if not MLX_AVAILABLE:
+        MODEL_STATUS['loading'] = False
+        MODEL_STATUS['error'] = "MLX not available"
+        print("MLX model loading skipped - MLX libraries not available")
+        return
+    
     MODEL_STATUS['loading'] = True
     
     if DEBUG_CHANNEL:
@@ -373,7 +456,7 @@ async def load_mlx_model():
             await send_debug_message(DEBUG_CHANNEL, 
                 f"MLX model loaded successfully in {load_time:.1f} seconds!")
         
-        print("MLX model loaded successfully")
+        print("✅ MLX model loaded successfully")
     except Exception as e:
         MODEL_STATUS['loading'] = False
         MODEL_STATUS['error'] = str(e)
@@ -382,174 +465,215 @@ async def load_mlx_model():
             await send_debug_message(DEBUG_CHANNEL, 
                 f"Error loading MLX model: {str(e)[:100]}...")
         
-        print(f"Error loading MLX model: {e}")
-        print("Please check your Hugging Face token or internet connection")
+        print(f"❌ Error loading MLX model: {e}")
+        print("💡 MLX may not be supported on this system or tokens may be invalid")
 
 def generate_response(prompt, history, user_context=""):
     """Generate human-like response based on chat history and user context"""
-    if model is None or tokenizer is None:
-        return "Sorry, the AI model isn't loaded properly. Please check the setup."
+    if not MLX_AVAILABLE or model is None or tokenizer is None:
+        # Fallback responses when MLX is not available
+        fallback_responses = [
+            "yeah that's interesting",
+            "lol true",
+            "hmm not sure about that one",
+            "fair point",
+            "that's wild",
+            "makes sense",
+            "oh really?",
+            "haha nice",
+            "i see what you mean",
+            "totally agree"
+        ]
+        import random
+        return random.choice(fallback_responses)
     
-    # Create context-aware prompt
-    full_prompt = f"""<s>[INST] <<SYS>>
-    You are a member of a Discord group chat. Act like a real person, not an AI assistant.
-    Use casual language, slang, and emojis naturally. Respond like the people in the chat history.
-    Be conversational, sometimes sarcastic, and match the group's energy.
-    <</SYS>>
+    try:
+        # Create context-aware prompt
+        full_prompt = f"""<s>[INST] <<SYS>>
+        You are a member of a Discord group chat. Act like a real person, not an AI assistant.
+        Use casual language, slang, and emojis naturally. Respond like the people in the chat history.
+        Be conversational, sometimes sarcastic, and match the group's energy.
+        <</SYS>>
 
-    Recent Chat History:
-    {history}
+        Recent Chat History:
+        {history}
 
-    User Context: {user_context}
-    
-    Current Message: {prompt} [/INST]"""
-    
-    tokens = tokenizer(
-        full_prompt,
-        return_tensors="np",
-        padding=True,
-        max_length=1024,
-        truncation=True
-    )
-    tokens = {k: mx.array(v) for k, v in tokens.items()}
-    
-    output = generate(
-        model,
-        tokenizer,
-        tokens,
-        temp=0.8,
-        max_tokens=200,
-        verbose=False
-    )
-    
-    return output
+        User Context: {user_context}
+        
+        Current Message: {prompt} [/INST]"""
+        
+        tokens = tokenizer(
+            full_prompt,
+            return_tensors="np",
+            padding=True,
+            max_length=1024,
+            truncation=True
+        )
+        tokens = {k: mx.array(v) for k, v in tokens.items()}
+        
+        output = generate(
+            model,
+            tokenizer,
+            tokens,
+            temp=0.8,
+            max_tokens=200,
+            verbose=False
+        )
+        
+        return output
+    except Exception as e:
+        print(f"Error generating response: {e}")
+        return "sorry, having some technical difficulties rn"
 
 def get_user_context(message):
     """Get context about the user who sent the message"""
+    if not PANDAS_AVAILABLE:
+        return ""
+        
     setup_config = load_setup_config()
     csv_file = setup_config.get('csv_file_path', 'Downloads/GC data.csv')
     
     if not os.path.exists(csv_file):
         return ""
     
-    df = pd.read_csv(csv_file)
-    user_messages = df[df['Username'] == message.author.name]['Content'].tolist()
-    
-    if not user_messages:
+    try:
+        df = pd.read_csv(csv_file)
+        user_messages = df[df['Username'] == message.author.name]['Content'].tolist()
+        
+        if not user_messages:
+            return ""
+        
+        # Get user's recent messages and style
+        recent_messages = user_messages[-5:] if len(user_messages) >= 5 else user_messages
+        user_style = analyze_user_personality(message.author.name)
+        
+        if user_style == "neutral":
+            return ""
+        
+        context = f"User {message.author.name} typically: "
+        if user_style.get('uses_emojis', False):
+            context += "uses emojis, "
+        if user_style.get('uses_slang', False):
+            context += "uses slang, "
+        if user_style.get('uses_caps', False):
+            context += "types in caps, "
+        
+        context += f"average message length: {user_style.get('message_length', 0):.1f} characters"
+        
+        user_id = message.author.id
+        preferred_name = USER_INTERACTION_HISTORY[user_id].get('preferred_name') if user_id in USER_INTERACTION_HISTORY else message.author.name
+        context += f"\nPreferred name: {preferred_name or message.author.name}"
+        
+        return context
+    except Exception as e:
+        print(f"Error getting user context: {e}")
         return ""
-    
-    # Get user's recent messages and style
-    recent_messages = user_messages[-5:] if len(user_messages) >= 5 else user_messages
-    user_style = analyze_user_personality(message.author.name)
-    
-    context = f"User {message.author.name} typically: "
-    if user_style['uses_emojis']:
-        context += "uses emojis, "
-    if user_style['uses_slang']:
-        context += "uses slang, "
-    if user_style['uses_caps']:
-        context += "types in caps, "
-    
-    context += f"average message length: {user_style['message_length']:.1f} characters"
-    
-    user_id = message.author.id
-    preferred_name = USER_INTERACTION_HISTORY[user_id]['preferred_name'] if user_id in USER_INTERACTION_HISTORY else message.author.name
-    context += f"\nPreferred name: {preferred_name}"
-    
-    return context
 
 # Bot events
-@bot.event
-async def on_ready():
-    global DEBUG_CHANNEL
-    print(f'Logged in as {bot.user}')
-    print(f'Bot ID: {bot.user.id}')
+if DISCORD_AVAILABLE and bot:
+    @bot.event
+    async def on_ready():
+        global DEBUG_CHANNEL
+        print(f'✅ Logged in as {bot.user}')
+        print(f'🤖 Bot ID: {bot.user.id}')
 
-    # Assign a specific channel for debug messages (update with actual ID)
-    DEBUG_CHANNEL = discord.utils.get(bot.get_all_channels(), id=123456789012345678)  # Replace with real ID
-    if DEBUG_CHANNEL:
-        await send_debug_message(DEBUG_CHANNEL, "Bot is now online.")
+        # Assign a specific channel for debug messages (update with actual ID)
+        try:
+            DEBUG_CHANNEL = discord.utils.get(bot.get_all_channels(), id=123456789012345678)  # Replace with real ID
+            if DEBUG_CHANNEL:
+                await send_debug_message(DEBUG_CHANNEL, "Bot is now online.")
+        except Exception as e:
+            print(f"Debug channel setup failed: {e}")
 
-    # Initialize files and build index
-    initialize_files()
-    build_index()
+        # Initialize files and build index
+        initialize_files()
+        build_index()
 
-    # Start system monitor task
-    asyncio.create_task(monitor_system_resources())
+        # Start system monitor task
+        asyncio.create_task(monitor_system_resources())
 
-    # Load MLX model
-    await load_mlx_model()
+        # Load MLX model
+        await load_mlx_model()
 
-@bot.event
-async def on_message(message):
-    if message.author == bot.user:
-        return
+    @bot.event
+    async def on_message(message):
+        if message.author == bot.user:
+            return
 
-    # Track and store new message
-    track_conversation_thread(message)
+        # Track and store new message
+        track_conversation_thread(message)
 
-    # Infrequent self-awareness operation
-    if len(MESSAGE_CACHE) % 10 == 0:  # Example of infrequent check
-        self_awareness_cycle()
+        # Infrequent self-awareness operation
+        if len(MESSAGE_CACHE) % 10 == 0:  # Example of infrequent check
+            self_awareness_cycle()
 
-    # Update user preference if mentioned
-    preferred_name = update_user_preference(message)
+        # Update user preference if mentioned
+        preferred_name = update_user_preference(message)
 
-    # Update storage with cleaned content
-    update_csv(message)
-    
-    # Add new embedding to index
-    cleaned_content = clean_markdown(message.content)
-    if cleaned_content:
-        new_embedding = embedder.encode([cleaned_content])
-        index.add(new_embedding)
+        # Update storage with cleaned content
+        update_csv(message)
         
-        # Save updated index
-        index_file = "embeddings.index"
-        faiss.write_index(index, index_file)
-    
-    # Respond to mentions or when directly addressed
-    if (bot.user.mentioned_in(message) or 
-        message.content.lower().startswith(f"<@{bot.user.id}>") or
-        message.content.lower().startswith(f"<@!{bot.user.id}>")):
+        # Add new embedding to index if available
+        if EMBEDDINGS_AVAILABLE and embedder and index:
+            try:
+                cleaned_content = clean_markdown(message.content)
+                if cleaned_content:
+                    new_embedding = embedder.encode([cleaned_content])
+                    index.add(new_embedding)
+                    
+                    # Save updated index
+                    index_file = "embeddings.index"
+                    faiss.write_index(index, index_file)
+            except Exception as e:
+                print(f"Error updating embeddings: {e}")
         
-        # Semantic search for context
-        query_embed = embedder.encode([clean_markdown(message.content)])
-        _, indices = index.search(query_embed, 10)
-        
-        # Retrieve context from CSV
-        setup_config = load_setup_config()
-        csv_file = setup_config.get('csv_file_path', 'Downloads/GC data.csv')
-        
-        if os.path.exists(csv_file):
-            df = pd.read_csv(csv_file)
-            context_messages = []
+        # Respond to mentions or when directly addressed
+        if (bot.user.mentioned_in(message) or 
+            message.content.lower().startswith(f"<@{bot.user.id}>") or
+            message.content.lower().startswith(f"<@!{bot.user.id}>")):
             
-            for idx in indices[0]:
-                if idx < len(df):
-                    row = df.iloc[idx]
-                    context_messages.append(f"{row['Username']}: {row['Content']}")
-            
-            context = "\n".join(context_messages[-5:])  # Last 5 relevant messages
-        else:
             context = ""
-        
-        # Get user context
-        user_context = get_user_context(message)
-        
-        # Generate response
-        response = generate_response(clean_markdown(message.content), context, user_context)
-        
-        # Apply user's style to response
-        styled_response = generate_user_style_response(message.author.name, response)
-        
-        # Add some randomness to make it more human
-        if np.random.random() < 0.3:
-            styled_response += " 💀"
-        if np.random.random() < 0.2:
-            styled_response = styled_response.lower()
-        
-        await message.channel.send(styled_response)
+            
+            # Semantic search for context if available
+            if EMBEDDINGS_AVAILABLE and embedder and index and PANDAS_AVAILABLE:
+                try:
+                    query_embed = embedder.encode([clean_markdown(message.content)])
+                    _, indices = index.search(query_embed, 10)
+                    
+                    # Retrieve context from CSV
+                    setup_config = load_setup_config()
+                    csv_file = setup_config.get('csv_file_path', 'Downloads/GC data.csv')
+                    
+                    if os.path.exists(csv_file):
+                        df = pd.read_csv(csv_file)
+                        context_messages = []
+                        
+                        for idx in indices[0]:
+                            if idx < len(df):
+                                row = df.iloc[idx]
+                                context_messages.append(f"{row['Username']}: {row['Content']}")
+                        
+                        context = "\n".join(context_messages[-5:])  # Last 5 relevant messages
+                except Exception as e:
+                    print(f"Error getting context: {e}")
+            
+            # Get user context
+            user_context = get_user_context(message)
+            
+            # Generate response
+            response = generate_response(clean_markdown(message.content), context, user_context)
+            
+            # Apply user's style to response
+            styled_response = generate_user_style_response(message.author.name, response)
+            
+            # Add some randomness to make it more human
+            import random
+            if random.random() < 0.3:
+                styled_response += " 💀"
+            if random.random() < 0.2:
+                styled_response = styled_response.lower()
+            
+            await message.channel.send(styled_response)
 
 # Main execution block
 if __name__ == "__main__":
