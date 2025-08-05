@@ -1,11 +1,24 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 import json
 import os
+import secrets
 from datetime import datetime
 import pandas as pd
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here'  # Change this to a random string
+# Generate a secure random secret key
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
+
+# Security headers
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses"""
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'"
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    return response
 
 # Configuration files
 CONFIG_FILE = "bot_config.json"
@@ -94,14 +107,68 @@ def setup():
     setup_config = load_setup_config()
     return render_template('setup.html', config=setup_config)
 
+def validate_discord_token(token):
+    """Validate Discord token format"""
+    if not token:
+        return False, "Discord token is required"
+    
+    token = token.strip()
+    
+    # Basic format validation - Discord tokens have specific patterns
+    if len(token) < 50:
+        return False, "Token too short"
+    
+    if len(token) > 100:
+        return False, "Token too long"
+    
+    # Check for bot token format (should have dots and proper structure)
+    if '.' not in token:
+        return False, "Invalid bot token format - should contain dots"
+    
+    parts = token.split('.')
+    if len(parts) != 3:
+        return False, "Invalid bot token format - should have 3 parts separated by dots"
+    
+    return True, "Valid token format"
+
+def sanitize_input(input_str, max_length=255):
+    """Sanitize user input to prevent XSS and other attacks"""
+    if not input_str:
+        return ""
+    
+    # Strip whitespace and limit length
+    sanitized = str(input_str).strip()[:max_length]
+    
+    # Remove potentially dangerous characters
+    dangerous_chars = ['<', '>', '"', "'", '&', '\x00', '\r', '\n']
+    for char in dangerous_chars:
+        sanitized = sanitized.replace(char, '')
+    
+    return sanitized
+
 @app.route('/api/save_setup', methods=['POST'])
 def save_setup():
     """Save setup configuration"""
     setup_config = load_setup_config()
     
-    setup_config['discord_token'] = request.form.get('discord_token', '')
-    setup_config['huggingface_token'] = request.form.get('huggingface_token', '')
-    setup_config['csv_file_path'] = request.form.get('csv_file_path', 'Downloads/GC data.csv')
+    # Get and validate inputs
+    discord_token = sanitize_input(request.form.get('discord_token', ''), 100)
+    huggingface_token = sanitize_input(request.form.get('huggingface_token', ''), 100)
+    csv_file_path = sanitize_input(request.form.get('csv_file_path', 'Downloads/GC data.csv'), 255)
+    
+    # Validate Discord token
+    is_valid_token, token_message = validate_discord_token(discord_token)
+    if not is_valid_token:
+        return jsonify({"success": False, "message": f"Discord token validation failed: {token_message}"})
+    
+    # Validate CSV path
+    is_valid_path, path_message = validate_csv_path(csv_file_path)
+    if not is_valid_path:
+        return jsonify({"success": False, "message": f"CSV path validation failed: {path_message}"})
+    
+    setup_config['discord_token'] = discord_token
+    setup_config['huggingface_token'] = huggingface_token
+    setup_config['csv_file_path'] = csv_file_path
     setup_config['setup_complete'] = True
     
     save_setup_config(setup_config)
@@ -116,31 +183,67 @@ def save_setup():
 
 @app.route('/api/test_discord_token', methods=['POST'])
 def test_discord_token():
-    """Test Discord token validity"""
+    """Test Discord bot token validity"""
     token = request.form.get('discord_token', '')
     
     if not token:
         return jsonify({"success": False, "message": "Token is required"})
     
-    # Basic token format validation
-    if not token.startswith('MTA') and not token.startswith('MTI'):
-        return jsonify({"success": False, "message": "Invalid token format. Please check your Discord account token."})
+    # Basic bot token format validation
+    # Bot tokens typically start with specific patterns and have dots
+    if '.' not in token or len(token) < 50:
+        return jsonify({"success": False, "message": "Invalid bot token format. Please use a Discord bot token, not a user token."})
     
-    return jsonify({"success": True, "message": "Token format looks valid!"})
+    # Check for bot token patterns (they usually have 3 parts separated by dots)
+    parts = token.split('.')
+    if len(parts) != 3:
+        return jsonify({"success": False, "message": "Invalid bot token format. Bot tokens should have 3 parts separated by dots."})
+    
+    return jsonify({"success": True, "message": "Bot token format looks valid!"})
+
+def validate_csv_path(csv_path):
+    """Validate CSV file path to prevent path traversal attacks"""
+    if not csv_path:
+        return False, "CSV path is required"
+    
+    # Normalize the path
+    csv_path = os.path.normpath(csv_path)
+    
+    # Check for path traversal attempts
+    if '..' in csv_path:
+        return False, "Invalid path: path traversal detected"
+    
+    # Check for absolute paths and ensure they're in allowed directories
+    if os.path.isabs(csv_path):
+        allowed_dirs = [os.getcwd(), os.path.expanduser('~/Downloads'), os.path.expanduser('~/Documents')]
+        if not any(csv_path.startswith(allowed_dir) for allowed_dir in allowed_dirs):
+            return False, "Invalid path: not in allowed directories"
+    
+    # Check file extension
+    if not csv_path.lower().endswith('.csv'):
+        return False, "Invalid file type: only CSV files are allowed"
+    
+    # Limit path length
+    if len(csv_path) > 255:
+        return False, "Path too long"
+    
+    return True, "Valid path"
 
 @app.route('/api/test_csv_path', methods=['POST'])
 def test_csv_path():
     """Test CSV file path"""
-    csv_path = request.form.get('csv_file_path', '')
+    csv_path = request.form.get('csv_file_path', '').strip()
     
-    if not csv_path:
-        return jsonify({"success": False, "message": "CSV path is required"})
+    # Validate the path
+    is_valid, message = validate_csv_path(csv_path)
+    if not is_valid:
+        return jsonify({"success": False, "message": message})
     
     if not os.path.exists(csv_path):
-        return jsonify({"success": False, "message": f"File not found: {csv_path}"})
+        return jsonify({"success": False, "message": f"File not found: {os.path.basename(csv_path)}"})
     
     try:
-        df = pd.read_csv(csv_path)
+        df = pd.read_csv(csv_path, nrows=1000)  # Limit rows read for validation
         if len(df) == 0:
             return jsonify({"success": False, "message": "CSV file is empty"})
         
@@ -149,7 +252,7 @@ def test_csv_path():
             "message": f"CSV file loaded successfully! Found {len(df)} messages from {df['Username'].nunique()} users."
         })
     except Exception as e:
-        return jsonify({"success": False, "message": f"Error reading CSV: {str(e)}"})
+        return jsonify({"success": False, "message": "Error reading CSV: Invalid file format"})
 
 @app.route('/profile')
 def profile():
