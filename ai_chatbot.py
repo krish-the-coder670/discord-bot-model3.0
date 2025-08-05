@@ -17,14 +17,16 @@ import asyncio
 import psutil
 import threading
 import time
+import signal
+import sys
 from collections import deque, defaultdict
-import pickle
 import hashlib
 
-# Discord.py-self setup for real account
+# Discord bot setup with proper bot token
 intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
+intents.guilds = True
 bot = discord.Client(intents=intents)
 
 # Configuration files
@@ -60,17 +62,41 @@ DEBUG_CHANNEL = None  # Assign this to a specific channel ID after initializatio
 MEMORY_THRESHOLD = 75  # Adjusted threshold for responsiveness
 LAST_MEMORY_WARNING = None
 
+
+
 def initialize_files():
     """Initialize CSV file if it doesn't exist"""
     setup_config = load_setup_config()
     csv_file = setup_config.get('csv_file_path', 'Downloads/GC data.csv')
     
-    # Create directory if it doesn't exist
-    os.makedirs(os.path.dirname(csv_file), exist_ok=True)
+    # Validate and sanitize the file path to prevent path traversal
+    csv_file = os.path.normpath(csv_file)
+    if os.path.isabs(csv_file):
+        # If absolute path, ensure it's within allowed directories
+        allowed_dirs = [os.getcwd(), os.path.expanduser('~/Downloads'), os.path.expanduser('~/Documents')]
+        if not any(csv_file.startswith(allowed_dir) for allowed_dir in allowed_dirs):
+            print(f"Warning: CSV path {csv_file} not in allowed directories. Using default.")
+            csv_file = 'Downloads/GC data.csv'
     
-    if not os.path.exists(csv_file):
-        with open(csv_file, 'w') as f:
-            f.write("Date,Username,User tag,Content,Mentions,link\n")
+    # Ensure the path doesn't contain dangerous patterns
+    if '..' in csv_file or csv_file.startswith('/'):
+        print(f"Warning: Potentially dangerous CSV path {csv_file}. Using default.")
+        csv_file = 'Downloads/GC data.csv'
+    
+    try:
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(csv_file), exist_ok=True)
+        
+        if not os.path.exists(csv_file):
+            with open(csv_file, 'w', encoding='utf-8') as f:
+                f.write("Date,Username,User tag,Content,Mentions,link\n")
+    except (OSError, IOError) as e:
+        print(f"Error initializing CSV file: {e}. Using default location.")
+        csv_file = 'Downloads/GC data.csv'
+        os.makedirs(os.path.dirname(csv_file), exist_ok=True)
+        if not os.path.exists(csv_file):
+            with open(csv_file, 'w', encoding='utf-8') as f:
+                f.write("Date,Username,User tag,Content,Mentions,link\n")
 
 def clean_markdown(text):
     """Remove Discord markdown formatting"""
@@ -91,24 +117,56 @@ def extract_emojis(text):
     """Extract emojis and convert to descriptions"""
     return emoji.demojize(text, delimiters=("[", "]"))
 
+def sanitize_csv_field(field):
+    """Sanitize field to prevent CSV injection attacks"""
+    if field is None:
+        return ""
+    
+    field_str = str(field)
+    # Remove or escape dangerous characters that could lead to CSV injection
+    dangerous_chars = ['=', '+', '-', '@', '\t', '\r', '\n']
+    for char in dangerous_chars:
+        if field_str.startswith(char):
+            field_str = "'" + field_str  # Escape with single quote
+    
+    # Limit field length to prevent DoS
+    if len(field_str) > 1000:
+        field_str = field_str[:997] + "..."
+    
+    return field_str
+
 def update_csv(message):
     """Update CSV with new message, cleaning markdown and handling emojis"""
     setup_config = load_setup_config()
     csv_file = setup_config.get('csv_file_path', 'Downloads/GC data.csv')
     
-    cleaned_content = clean_markdown(message.content)
-    emoji_content = extract_emojis(cleaned_content)
+    # Validate and sanitize the file path
+    csv_file = os.path.normpath(csv_file)
+    if '..' in csv_file:
+        print("Warning: Dangerous CSV path detected. Using default.")
+        csv_file = 'Downloads/GC data.csv'
     
-    with open(csv_file, 'a', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow([
-            message.created_at.strftime("%Y-%m-%d,%H:%M:%S"),
-            message.author.name,
-            str(message.author.id),
-            emoji_content,
-            ",".join([str(m.id) for m in message.mentions]),
-            message.attachments[0].url if message.attachments else ""
-        ])
+    try:
+        cleaned_content = clean_markdown(message.content)
+        emoji_content = extract_emojis(cleaned_content)
+        
+        # Sanitize all fields to prevent CSV injection
+        row_data = [
+            sanitize_csv_field(message.created_at.strftime("%Y-%m-%d %H:%M:%S")),
+            sanitize_csv_field(message.author.name),
+            sanitize_csv_field(str(message.author.id)),
+            sanitize_csv_field(emoji_content),
+            sanitize_csv_field(",".join([str(m.id) for m in message.mentions])),
+            sanitize_csv_field(message.attachments[0].url if message.attachments else "")
+        ]
+        
+        with open(csv_file, 'a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f, quoting=csv.QUOTE_ALL)  # Quote all fields for safety
+            writer.writerow(row_data)
+    except (OSError, IOError) as e:
+        print(f"Error writing to CSV: {e}")
+    except Exception as e:
+        print(f"Unexpected error updating CSV: {e}")
 
 def update_user_preference(message):
     """Detect user's preferred way to be addressed and update interaction history"""
@@ -214,7 +272,12 @@ SYSTEM_MONITOR = {'cpu': 0.0, 'memory': 0.0, 'uptime': 0.0}  # More detailed mon
 async def send_debug_message(channel, message):
     """Send debug message in code format"""
     if channel:
-        await channel.send(f"`{message}`")
+        try:
+            # Sanitize debug message to prevent information leakage
+            sanitized_message = str(message)[:500]  # Limit length
+            await channel.send(f"`{sanitized_message}`")
+        except Exception as e:
+            print(f"Failed to send debug message: {e}")
 
 async def monitor_system_resources():
     """Monitor system resources and send warnings"""
@@ -243,34 +306,129 @@ async def monitor_system_resources():
             print(f"System monitor error: {e}")
             await asyncio.sleep(60)
 
+async def periodic_memory_cleanup():
+    """Periodically clean up memory to prevent leaks"""
+    while True:
+        try:
+            await asyncio.sleep(3600)  # Run every hour
+            
+            # Clean up old conversation memory
+            current_time = datetime.now()
+            for channel_id in list(CONVERSATION_MEMORY.keys()):
+                messages = CONVERSATION_MEMORY[channel_id]
+                # Keep only messages from last 7 days
+                recent_messages = [
+                    msg for msg in messages 
+                    if hasattr(msg.get('timestamp'), 'date') and 
+                    (current_time - msg['timestamp']).days < 7
+                ]
+                CONVERSATION_MEMORY[channel_id] = recent_messages[-100:]  # Keep max 100 recent messages
+            
+            # Clean up old user interaction history
+            for user_id in list(USER_INTERACTION_HISTORY.keys()):
+                history = USER_INTERACTION_HISTORY[user_id]
+                if history.get('last_seen'):
+                    # Remove users not seen in 30 days
+                    if (current_time - history['last_seen']).days > 30:
+                        del USER_INTERACTION_HISTORY[user_id]
+                    else:
+                        # Limit interaction history size
+                        if 'interactions' in history:
+                            history['interactions'] = history['interactions'][-50:]
+                        if 'topics' in history:
+                            history['topics'] = history['topics'][-20:]
+            
+            # Clean up response cache (keep only recent entries)
+            if len(RESPONSE_CACHE) > 1000:
+                # Keep only the most recent 500 entries
+                cache_items = list(RESPONSE_CACHE.items())
+                RESPONSE_CACHE.clear()
+                RESPONSE_CACHE.update(dict(cache_items[-500:]))
+            
+            # Save cleaned memory to disk
+            save_conversation_memory()
+            
+            print("Memory cleanup completed")
+            
+        except Exception as e:
+            print(f"Memory cleanup error: {e}")
+            await asyncio.sleep(3600)  # Wait an hour before retrying
+
 def save_conversation_memory():
-    """Save conversation memory to disk"""
-    memory_file = "conversation_memory.pkl"
+    """Save conversation memory to disk using secure JSON serialization"""
+    memory_file = "conversation_memory.json"
     try:
-        with open(memory_file, 'wb') as f:
-            pickle.dump({
-                'conversations': dict(CONVERSATION_MEMORY),
-                'user_history': dict(USER_INTERACTION_HISTORY),
-                'personalities': USER_PERSONALITIES,
-                'response_cache': RESPONSE_CACHE
-            }, f)
+        # Convert datetime objects to strings for JSON serialization
+        conversations_serializable = {}
+        for channel_id, messages in CONVERSATION_MEMORY.items():
+            conversations_serializable[str(channel_id)] = []
+            for msg in messages:
+                msg_copy = msg.copy()
+                if 'timestamp' in msg_copy and hasattr(msg_copy['timestamp'], 'isoformat'):
+                    msg_copy['timestamp'] = msg_copy['timestamp'].isoformat()
+                conversations_serializable[str(channel_id)].append(msg_copy)
+        
+        user_history_serializable = {}
+        for user_id, history in USER_INTERACTION_HISTORY.items():
+            history_copy = history.copy()
+            if 'last_seen' in history_copy and history_copy['last_seen']:
+                history_copy['last_seen'] = history_copy['last_seen'].isoformat()
+            # Limit interactions to prevent excessive memory usage
+            if 'interactions' in history_copy:
+                history_copy['interactions'] = history_copy['interactions'][-50:]
+            user_history_serializable[str(user_id)] = history_copy
+        
+        data = {
+            'conversations': conversations_serializable,
+            'user_history': user_history_serializable,
+            'personalities': dict(USER_PERSONALITIES),
+            'response_cache': dict(RESPONSE_CACHE)
+        }
+        
+        with open(memory_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"Error saving memory: {e}")
 
 def load_conversation_memory():
-    """Load conversation memory from disk"""
-    memory_file = "conversation_memory.pkl"
+    """Load conversation memory from disk using secure JSON deserialization"""
+    memory_file = "conversation_memory.json"
+    # Also check for old pickle file and migrate if needed
+    old_memory_file = "conversation_memory.pkl"
+    
     if os.path.exists(memory_file):
         try:
-            with open(memory_file, 'rb') as f:
-                data = pickle.load(f)
-                CONVERSATION_MEMORY.update(data.get('conversations', {}))
-                USER_INTERACTION_HISTORY.update(data.get('user_history', {}))
-                USER_PERSONALITIES.update(data.get('personalities', {}))
-                RESPONSE_CACHE.update(data.get('response_cache', {}))
-                print("Loaded conversation memory successfully")
+            with open(memory_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                
+            # Convert back to proper data types
+            for channel_id, messages in data.get('conversations', {}).items():
+                channel_id = int(channel_id)
+                for msg in messages:
+                    if 'timestamp' in msg and isinstance(msg['timestamp'], str):
+                        try:
+                            msg['timestamp'] = datetime.fromisoformat(msg['timestamp'])
+                        except ValueError:
+                            msg['timestamp'] = datetime.now()
+                CONVERSATION_MEMORY[channel_id] = messages
+                
+            for user_id, history in data.get('user_history', {}).items():
+                user_id = int(user_id)
+                if 'last_seen' in history and isinstance(history['last_seen'], str):
+                    try:
+                        history['last_seen'] = datetime.fromisoformat(history['last_seen'])
+                    except ValueError:
+                        history['last_seen'] = None
+                USER_INTERACTION_HISTORY[user_id] = history
+                
+            USER_PERSONALITIES.update(data.get('personalities', {}))
+            RESPONSE_CACHE.update(data.get('response_cache', {}))
+            print("Loaded conversation memory successfully")
         except Exception as e:
             print(f"Error loading memory: {e}")
+    elif os.path.exists(old_memory_file):
+        print("Found old pickle memory file. Please restart the bot to migrate to secure JSON format.")
+        # Don't load the old pickle file for security reasons
 
 def get_response_cache_key(prompt, context):
     """Generate cache key for responses"""
@@ -465,10 +623,24 @@ async def on_ready():
     print(f'Logged in as {bot.user}')
     print(f'Bot ID: {bot.user.id}')
 
-    # Assign a specific channel for debug messages (update with actual ID)
-    DEBUG_CHANNEL = discord.utils.get(bot.get_all_channels(), id=123456789012345678)  # Replace with real ID
+    # Try to find a debug channel by name or use the first available channel
+    config = load_config()
+    debug_channel_id = config.get('debug_channel_id')
+    
+    if debug_channel_id:
+        DEBUG_CHANNEL = discord.utils.get(bot.get_all_channels(), id=int(debug_channel_id))
+    
+    if not DEBUG_CHANNEL:
+        # Try to find a channel named 'debug' or 'bot-debug'
+        for channel in bot.get_all_channels():
+            if hasattr(channel, 'name') and channel.name.lower() in ['debug', 'bot-debug', 'general']:
+                DEBUG_CHANNEL = channel
+                break
+    
     if DEBUG_CHANNEL:
         await send_debug_message(DEBUG_CHANNEL, "Bot is now online.")
+    else:
+        print("No debug channel found. Debug messages will be printed to console only.")
 
     # Initialize files and build index
     initialize_files()
@@ -476,6 +648,12 @@ async def on_ready():
 
     # Start system monitor task
     asyncio.create_task(monitor_system_resources())
+    
+    # Start memory cleanup task
+    asyncio.create_task(periodic_memory_cleanup())
+
+    # Load conversation memory
+    load_conversation_memory()
 
     # Load MLX model
     await load_mlx_model()
@@ -551,8 +729,24 @@ async def on_message(message):
         
         await message.channel.send(styled_response)
 
+def signal_handler(sig, frame):
+    """Handle shutdown signals gracefully"""
+    print("\n🔄 Shutting down gracefully...")
+    try:
+        save_conversation_memory()
+        print("💾 Memory saved successfully")
+    except Exception as e:
+        print(f"⚠️  Error saving memory: {e}")
+    
+    print("👋 Bot shutdown complete")
+    sys.exit(0)
+
 # Main execution block
 if __name__ == "__main__":
+    # Set up signal handlers for graceful shutdown
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     # Validate setup completion
     setup_config = load_setup_config()
 
@@ -571,10 +765,17 @@ if __name__ == "__main__":
     print("🚀 Launching Discord AI Chatbot...")
     print("📊 Manage via Web UI: http://localhost:5000")
     print("🤖 The bot is live and will engage upon mention")
+    print("💡 Press Ctrl+C to stop gracefully")
 
     try:
-        # Execute the bot using discord.py-self
-        bot.run(discord_token, bot=False)
+        # Execute the bot using proper bot token
+        bot.run(discord_token)
+    except KeyboardInterrupt:
+        signal_handler(signal.SIGINT, None)
     except Exception as e:
         print(f"❌ Startup Error: {e}")
-        print("💡 Ensure Discord token accuracy and confirm usage of a user token")
+        print("💡 Ensure Discord bot token is correct and the bot has proper permissions")
+        try:
+            save_conversation_memory()
+        except:
+            pass

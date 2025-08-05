@@ -10,17 +10,18 @@ import os
 def check_dependencies():
     """Check if all required packages are installed"""
     required_packages = [
-        'discord.py-self',
+        'discord.py',
         'flask',
         'pandas',
         'numpy',
         'sentence_transformers',
-        'faiss',
+        'faiss-cpu',  # Use CPU version for better compatibility
         'mlx_lm',
         'mlx',
-        'bs4',
+        'beautifulsoup4',  # Correct package name for bs4
         'emoji',
-        'markdown'
+        'markdown',
+        'psutil'  # Add missing psutil dependency
     ]
     
     missing_packages = []
