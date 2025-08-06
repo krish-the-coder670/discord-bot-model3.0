@@ -1,0 +1,59 @@
+# Optimized Discord Bot Dependencies
+# Core Discord functionality
+discord.py>=2.3.0
+
+# Web Framework (optimized versions)
+Flask>=2.3.0
+Werkzeug>=2.3.0
+
+# Data Processing (optimized for performance)
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Machine Learning (CPU-optimized versions)
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.4  # CPU version for better compatibility
+transformers>=4.30.0
+
+# MLX for Apple Silicon optimization (if available)
+mlx>=0.0.6
+mlx-lm>=0.0.6
+
+# Text Processing (lightweight versions)
+beautifulsoup4>=4.12.0
+emoji>=2.8.0
+markdown>=3.5.0
+
+# System Monitoring and Optimization
+psutil>=5.9.0
+memory-profiler>=0.60.0
+
+# Caching and Database
+sqlite3  # Built-in Python module
+redis>=4.5.0  # Optional for distributed caching
+
+# Performance and Concurrency
+asyncio  # Built-in Python module
+concurrent.futures  # Built-in Python module
+threading  # Built-in Python module
+multiprocessing  # Built-in Python module
+
+# Security (ensure secure versions)
+cryptography>=41.0.0
+requests>=2.31.0
+urllib3>=2.0.0
+
+# Optional GPU acceleration (uncomment if needed)
+# torch>=2.0.0  # For GPU acceleration
+# torchvision>=0.15.0
+# torchaudio>=2.0.0
+
+# Development and Testing
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+flake8>=6.0.0
+
+# Logging and Monitoring
+loguru>=0.7.0  # Enhanced logging
+prometheus-client>=0.16.0  # Metrics collection
