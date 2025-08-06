@@ -226,7 +226,7 @@ def generate_user_style_response(username, base_response):
         base_response += " " + np.random.choice(['🙂', '😄', '😂'], p=[0.5, 0.3, 0.2])
 
     if personality['uses_slang']:
-        slang_mappings = {"I think": "ngl", "I believe": "fr", "really": "rly", "you know": "y'know"}
+        slang_mappings = {"I think": "ngl", "I believe": "fr", "really": "rly", "you know": "y'know", "ts": "this shit"}
         for key, val in slang_mappings.items():
             base_response = base_response.replace(key, val)
 
